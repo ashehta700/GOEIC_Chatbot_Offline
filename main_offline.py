@@ -2014,4 +2014,4 @@ if __name__ == "__main__":
     logger.info(f"💰 API Costs: $0.00 (100% OFFLINE)")
     logger.info("=" * 80)
     
-    uvicorn.run("main_offline:app", host="0.0.0.0", port=8000, reload=False, log_level="info")
+    uvicorn.run("main_offline:app", host="0.0.0.0", port=5000, reload=False, log_level="info")
