@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تسجيل الدخول - GOEIC Admin</title>
+    <!-- استيراد خطوط احترافية -->
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --accent-color: #3498db;
+            --success-color: #27ae60;
+            --error-color: #e74c3c;
+            --bg-gradient: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        }
+
+        body {
+            font-family: 'Cairo', 'Inter', sans-serif;
+            background: var(--bg-gradient);
+            height: 100vh;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        /* حاوية الخلفية الجمالية */
+        .bg-shapes {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            overflow: hidden;
+        }
+        .shape {
+            position: absolute;
+            background: rgba(52, 152, 219, 0.1);
+            border-radius: 50%;
+        }
+        .shape-1 { width: 400px; height: 400px; top: -100px; left: -100px; }
+        .shape-2 { width: 300px; height: 300px; bottom: -50px; right: -50px; }
+
+        .login-card {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 40px;
+            border-radius: 24px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            transition: transform 0.3s ease;
+            position: relative;
+        }
+
+        .logo-container {
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .logo-container img {
+            width: 140px; /* زيادة حجم الشعار قليلاً ليكون واضحاً */
+            height: auto;
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.15));
+            transition: transform 0.3s ease;
+        }
+
+        .logo-container img:hover {
+            transform: scale(1.05);
+        }
+
+        h2 {
+            color: var(--primary-color);
+            font-weight: 700;
+            margin-bottom: 8px;
+            font-size: 1.5rem;
+        }
+
+        p.subtitle {
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            margin-bottom: 30px;
+        }
+
+        .input-group {
+            direction: rtl;
+            position: relative;
+            margin-bottom: 20px;
+            text-align: right;
+        }
+
+        input {
+            width: 100%;
+            padding: 14px 20px;
+            box-sizing: border-box;
+            border: 2px solid #edf2f7;
+            border-radius: 12px;
+            font-size: 1rem;
+            outline: none;
+            transition: all 0.3s ease;
+            background: #f8fafc;
+            font-family: inherit;
+        }
+
+        input:focus {
+            border-color: var(--accent-color);
+            background: white;
+            box-shadow: 0 0 0 4px rgba(52, 152, 219, 0.1);
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 4px 12px rgba(44, 62, 80, 0.2);
+        }
+
+        button:hover {
+            background: #1a252f;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(44, 62, 80, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .error {
+            background: #fff5f5;
+            color: var(--error-color);
+            padding: 12px;
+            border-radius: 10px;
+            font-size: 0.85rem;
+            margin-top: 20px;
+            border: 1px solid #fed7d7;
+            display: none;
+            animation: shake 0.4s ease-in-out;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+
+        .footer-text {
+            margin-top: 25px;
+            font-size: 0.8rem;
+            color: #94a3b8;
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+            display: none;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-shapes">
+        <div class="shape shape-1"></div>
+        <div class="shape shape-2"></div>
+    </div>
+
+    <div class="login-card">
+        <div class="logo-container">
+            <!-- الشعار المرفق من المستخدم -->
+            <img src="./public/logo.png" alt="الهيئة العامة للرقابة على الصادرات والواردات">
+        </div>
+        
+        <h2>SMART GOEIC</h2>
+        <p class="subtitle">نظام الرقابة على الصادرات والواردات</p>
+
+        <form id="loginForm" onsubmit="event.preventDefault(); login();">
+            <div class="input-group">
+                <input type="text" id="username" placeholder="اسم المستخدم" required autofocus>
+            </div>
+            
+            <div class="input-group">
+                <input type="password" id="password" placeholder="كلمة المرور" required>
+            </div>
+
+            <button type="submit" id="loginBtn">
+                <span class="spinner" id="btnSpinner"></span>
+                <span id="btnText">تسجيل دخول آمن</span>
+            </button>
+        </form>
+
+        <div class="error" id="error">خطأ في اسم المستخدم أو كلمة المرور</div>
+
+        <div class="footer-text">
+            جميع الحقوق محفوظة &copy; الهيئة العامة للرقابة على الصادرات والواردات
+        </div>
+    </div>
+
+
+
+
+
+    <script>
+        async function login() {
+            const btn = document.getElementById('loginBtn');
+            const err = document.getElementById('error');
+            const user = document.getElementById('username').value;
+            const pass = document.getElementById('password').value;
+
+            btn.innerText = "Verifying...";
+            btn.disabled = true;
+            err.style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('username', user);
+            formData.append('password', pass);
+
+            try {
+                const res = await fetch('/api/login', { method: 'POST', body: formData });
+                if (res.ok) {
+                    btn.innerText = "Success! Entering...";
+                    btn.style.background = "#27ae60"; 
+                    // 🟢 FIX: Add timestamp to force fresh load (Bypass Cache)
+                    window.location.href = "/admin?t=" + new Date().getTime(); 
+                } else {
+                    throw new Error("Invalid credentials");
+                }
+            } catch (e) { 
+                err.style.display = 'block';
+                btn.innerText = "Secure Login";
+                btn.disabled = false;
+                btn.style.background = "#3498db";
+            }
+        }
+    </script>
+</body>
+</html>

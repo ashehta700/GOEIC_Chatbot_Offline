@@ -1,0 +1,10 @@
+__pycache__/
+env/
+.env
+analytics.db
+weaviate_data/
+uploads/
+logs/
+*.pyc
+.DS_Store
+depoly.sh
