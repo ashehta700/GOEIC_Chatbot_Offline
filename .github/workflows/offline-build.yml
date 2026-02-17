@@ -11,6 +11,11 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
+      # --- NEW STEP: Convert repo name to lowercase ---
+      - name: Sanitize repo slug
+        id: repo_slug
+        run: echo "result=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
@@ -27,5 +32,5 @@ jobs:
           context: .
           file: ./Dockerfile.offline
           push: true
-          # This saves the image to your GitHub account
-          tags: ghcr.io/${{ github.repository }}/goeic-offline:latest
+          # --- FIXED: Using the lowercase slug here ---
+          tags: ghcr.io/${{ steps.repo_slug.outputs.result }}/goeic-offline:latest
