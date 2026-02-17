@@ -7,11 +7,15 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # --- ADD THESE PERMISSIONS ---
+    permissions:
+      contents: read
+      packages: write
+    # -----------------------------
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      # --- NEW STEP: Convert repo name to lowercase ---
       - name: Sanitize repo slug
         id: repo_slug
         run: echo "result=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
@@ -32,5 +36,4 @@ jobs:
           context: .
           file: ./Dockerfile.offline
           push: true
-          # --- FIXED: Using the lowercase slug here ---
           tags: ghcr.io/${{ steps.repo_slug.outputs.result }}/goeic-offline:latest
