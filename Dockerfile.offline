@@ -29,7 +29,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY main_offline.py .
 COPY smart_scraper_offline.py .
 COPY smart_excel_uploader_offline.py .
-COPY smart_cleanup.py .
+COPY smart_cleaner.py .
 
 # Copy public assets if they exist
 COPY public/ ./public/
