@@ -1,0 +1,40 @@
+2026-02-20 23:28:47,019 - INFO - 📥 Loading embedding model...
+2026-02-20 23:28:47,027 - INFO - Use pytorch device_name: cpu
+2026-02-20 23:28:47,027 - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-02-20 23:28:47,816 - INFO - ✅ [2f28f34b] GET /api/admin/scraping-status | 0.00s
+2026-02-20 23:28:47,819 - INFO - ✅ [9792fcbc] GET /api/admin/upload-status | 0.00s
+2026-02-20 23:28:50,820 - INFO - ✅ [3e604248] GET /api/admin/scraping-status | 0.00s
+2026-02-20 23:28:50,824 - INFO - ✅ [6a1aaae4] GET /api/admin/upload-status | 0.01s
+2026-02-20 23:28:51,084 - INFO - ✅ Embedding model loaded
+2026-02-20 23:28:51,665 - INFO - HTTP Request: GET http://localhost:8080/v1/.well-known/openid-configuration "HTTP/1.1 404 Not Found"
+2026-02-20 23:28:52,180 - INFO - HTTP Request: GET http://localhost:8080/v1/meta "HTTP/1.1 200 OK"
+2026-02-20 23:28:52,886 - INFO - HTTP Request: GET https://pypi.org/pypi/weaviate-client/json "HTTP/1.1 200 OK"
+2026-02-20 23:28:52,963 - INFO - ✅ Weaviate connected for scraping task
+2026-02-20 23:28:52,964 - INFO - 🧹 Running pre-scrape duplicate cleanup...
+2026-02-20 23:28:53,819 - INFO - ✅ [8df32a02] GET /api/admin/upload-status | 0.00s
+2026-02-20 23:28:53,820 - INFO - ✅ [ea3bca68] GET /api/admin/scraping-status | 0.00s
+2026-02-20 23:28:56,818 - INFO - ✅ [a3635521] GET /api/admin/upload-status | 0.00s
+2026-02-20 23:28:56,819 - INFO - ✅ [5bc742da] GET /api/admin/scraping-status | 0.00s
+2026-02-20 23:28:59,191 - INFO - 🗑️ Cleanup: removing 1 duplicate parents...
+2026-02-20 23:28:59,293 - INFO - ✅ Cleanup done: removed 1 duplicates
+2026-02-20 23:29:00,051 - INFO - ✅ [d32095c9] GET /api/admin/upload-status | 0.06s
+2026-02-20 23:29:00,161 - INFO - ✅ [316d55ec] GET /api/admin/scraping-status | 0.17s
+2026-02-20 23:29:00,641 - INFO - ✅ Loaded 9082 existing URLs from database
+2026-02-20 23:29:00,658 - INFO - 🔍 Duplicate detector ready: 9082 existing URLs
+2026-02-20 23:29:00,660 - INFO - 🚀 Starting smart scrape (max: 6000 pages)
+2026-02-20 23:29:00,661 - INFO - 📊 Existing URLs in DB: 9082
+2026-02-20 23:29:02,803 - INFO - 📡 WebSocket client disconnected (Remaining: 0)
+2026-02-20 23:29:03,193 - INFO - ✅ [d8f7da55] GET /api/stats | 0.00s
+2026-02-20 23:29:05,524 - INFO - ✅ [2b0631ad] GET /api/admin/scraping-status | 0.00s
+2026-02-20 23:29:05,527 - INFO - ✅ [a8a71faa] GET /api/admin/upload-status | 0.00s
+2026-02-20 23:29:06,330 - INFO - 📡 WebSocket client connected (Total: 1)
+2026-02-20 23:29:07,272 - INFO - 🔄 UPDATED: الهيئة العامة للرقابة على الصادرات والواردات
+2026-02-20 23:29:08,527 - INFO - ✅ [22483be4] GET /api/admin/upload-status | 0.00s
+2026-02-20 23:29:08,528 - INFO - ✅ [f0f6f6a1] GET /api/admin/scraping-status | 0.00s
+2026-02-20 23:29:11,532 - INFO - ✅ [d723b44f] GET /api/admin/upload-status | 0.00s
+2026-02-20 23:29:11,533 - INFO - ✅ [7d6c0669] GET /api/admin/scraping-status | 0.00s
+2026-02-20 23:29:14,933 - INFO - ✅ [4c1f32c8] GET /api/admin/upload-status | 0.00s
+2026-02-20 23:29:14,934 - INFO - ✅ [c26e3c37] GET /api/admin/scraping-status | 0.00s
+2026-02-20 23:29:17,934 - INFO - ✅ [8760d92a] GET /api/admin/upload-status | 0.00s
+2026-02-20 23:29:17,934 - INFO - ✅ [2a1c93f3] GET /api/admin/scraping-status | 0.00s
+2026-02-20 23:29:19,708 - INFO - 📡 WebSocket client disconnected (Remaining: 0)

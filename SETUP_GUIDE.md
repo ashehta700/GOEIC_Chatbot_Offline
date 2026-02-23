@@ -1,737 +1,338 @@
-# ═══════════════════════════════════════════════════════════════
-#  GOEIC OFFLINE RAG — LINUX DEPLOYMENT GUIDE
-#  Ubuntu 22.04 / 24.04 LTS  (also works on Debian 12)
-#  Server: Xeon E5-1650 v4 | 30 GB RAM | RTX 4070 Ti SUPER 16 GB
-# ═══════════════════════════════════════════════════════════════
+# GOEIC Enterprise Assistant — Windows Setup Guide
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- COMPATIBILITY SUMMARY
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**Version:** 2.0 — Fully Offline  
+**Requirements:** Windows 10/11 (64-bit), 16 GB RAM minimum, NVIDIA GPU recommended
 
-  ✅ Windows 10/11   — Tested, fully working
-  ✅ Linux Ubuntu 22 — Tested, fully working
-  ✅ Linux Ubuntu 24 — Tested, fully working
+---
 
-  Cross-platform fixes applied:
-  • tempfile.gettempdir() instead of hardcoded paths
-  • asyncio.get_running_loop() instead of get_event_loop()
-  • ThreadPoolExecutor (no subprocess) for background tasks
-  • Thread-safe WebSocket broadcaster (no new event loops)
-  • Path() objects everywhere (no os.sep issues)
+## Overview
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- TABLE OF CONTENTS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The system runs three Docker containers:
 
-  PART 1  │  System Packages
-  PART 2  │  GPU DRIVER + CUDA  ← FIX "GPU not working"
-  PART 3  │  Docker + Weaviate
-  PART 4  │  Ollama (Local LLM)
-  PART 5  │  Python Environment
-  PART 6  │  Project Files + .env
-  PART 7  │  First Run & Smoke Tests
-  PART 8  │  Systemd Service (auto-start)
-  PART 9  │  Nginx Reverse Proxy
-  PART 10 │  Monitoring Commands
-  PART 11 │  Troubleshooting GPU
+| Container | Purpose | Port |
+|-----------|---------|------|
+| `goeic-ollama` | Local LLM (Qwen 2.5) | 11434 |
+| `goeic-weaviate` | Vector database | 8080 / 50051 |
+| `goeic-app` | FastAPI application | 8000 |
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- PART 1 — SYSTEM PACKAGES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+All data is stored in named Docker volumes — your database persists across restarts and upgrades.
 
-# 1.1 Update system
-sudo apt update && sudo apt upgrade -y
+---
 
-# 1.2 Install required packages
-sudo apt install -y \
-    python3.11 \
-    python3.11-venv \
-    python3.11-dev \
-    python3-pip \
-    build-essential \
-    git \
-    wget \
-    curl \
-    ffmpeg \
-    nginx \
-    htop
+## Step 1 — Install Prerequisites
 
-# 1.3 Verify FFmpeg (needed for Whisper voice)
-ffmpeg -version
-# Expected: ffmpeg version 4.4.x or 6.x
+### 1.1 Docker Desktop
 
+1. Download **Docker Desktop for Windows** from https://www.docker.com/products/docker-desktop/
+2. Run the installer and follow the prompts (enable WSL 2 when asked).
+3. Restart your computer.
+4. Open Docker Desktop and wait for the whale icon in the taskbar to stop animating.
+5. Verify the installation — open **PowerShell** and run:
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- PART 2 — GPU DRIVER + CUDA  (Fix "GPU not working")
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-# ─── STEP 2.1: Check what's currently installed ──────────────
-
-nvidia-smi
-
-# If nvidia-smi WORKS → jump to Step 2.3 (install CUDA)
-# If nvidia-smi says "command not found" → do Step 2.2 first
-
-# ─── STEP 2.2: Install NVIDIA Driver ─────────────────────────
-
-# Find recommended driver version
-sudo apt install ubuntu-drivers-common -y
-ubuntu-drivers devices
-# Look for line like: driver : nvidia-driver-550 - recommended
-
-# Install recommended driver
-sudo ubuntu-drivers autoinstall
-
-# REBOOT (required after driver install)
-sudo reboot
-
-# After reboot, verify driver
-nvidia-smi
-# Expected output:
-# +-----------------------------------------------------------------------------+
-# | NVIDIA-SMI 550.xx   Driver Version: 550.xx   CUDA Version: 12.4          |
-# +-----------------------------------------------------------------------------+
-# | GPU  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. |
-# | RTX 4070 Ti S...     Off |   ...                |          0 |
-# | 70W  /  285W |   2000MiB /  16376MiB |      1%      Default |
-
-# ─── STEP 2.3: Install CUDA Toolkit 12.4 ─────────────────────
-
-wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
-sudo dpkg -i cuda-keyring_1.1-1_all.deb
-sudo apt update
-sudo apt install cuda-toolkit-12-4 -y
-
-# Add CUDA to PATH (add to ~/.bashrc for persistence)
-echo 'export PATH=/usr/local/cuda/bin:$PATH' >> ~/.bashrc
-echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
-source ~/.bashrc
-
-# Verify CUDA
-nvcc --version
-# Expected: Cuda compilation tools, release 12.4
-
-# ─── STEP 2.4: Verify GPU is visible to Python ───────────────
-
-python3 -c "
-import torch
-print('PyTorch version :', torch.__version__)
-print('CUDA available  :', torch.cuda.is_available())
-if torch.cuda.is_available():
-    print('GPU name        :', torch.cuda.get_device_name(0))
-    print('VRAM total      :', round(torch.cuda.get_device_properties(0).total_memory / 1024**3, 1), 'GB')
-    print('VRAM free       :', round(torch.cuda.memory_reserved(0) / 1024**3, 2), 'GB used')
-else:
-    print('❌ GPU not visible — check driver installation above')
-"
-
-# ─── STEP 2.5: If CUDA shows "available: False" after driver ──
-# Most common reason: PyTorch was installed for CPU only
-# Fix by reinstalling PyTorch with CUDA support (done in Part 5)
-
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- PART 3 — DOCKER + WEAVIATE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-# 3.1 Install Docker
-curl -fsSL https://get.docker.com | sudo sh
-sudo usermod -aG docker $USER
-sudo apt install docker-compose-plugin -y
-newgrp docker   # Apply group without logout
-
-# Verify
+```powershell
 docker --version
 docker compose version
+```
 
-# 3.2 Create project directory
-mkdir -p ~/goeic_rag/weaviate_data
-cd ~/goeic_rag
+Both commands should print version numbers. If they don't, restart Docker Desktop and try again.
 
-# 3.3 Create docker-compose.yml
-cat > docker-compose.yml << 'EOF'
-version: '3.4'
-services:
-  weaviate:
-    image: semitechnologies/weaviate:1.27.0
-    ports:
-      - "8080:8080"
-      - "50051:50051"
-    environment:
-      QUERY_DEFAULTS_LIMIT: 25
-      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
-      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
-      DEFAULT_VECTORIZER_MODULE: 'none'
-      ENABLE_MODULES: ''
-      CLUSTER_HOSTNAME: 'node1'
-    volumes:
-      - ./weaviate_data:/var/lib/weaviate
-    restart: unless-stopped
-EOF
+### 1.2 NVIDIA GPU Support (Optional but Recommended)
 
-# 3.4 Start Weaviate
-docker compose up -d
+Skip this section if you do not have an NVIDIA GPU. The application will still run on CPU.
 
-# 3.5 Wait and verify (may take 30 seconds first start)
-sleep 15
-curl http://localhost:8080/v1/meta | python3 -m json.tool | head -10
-# Should return JSON with Weaviate version info
+1. Install the latest **NVIDIA Game Ready or Studio Driver** from https://www.nvidia.com/drivers
+2. Install the **NVIDIA Container Toolkit for Windows (WSL 2)**:
+   - Open PowerShell **as Administrator** and run:
+   ```powershell
+   wsl --install
+   wsl --set-default-version 2
+   ```
+   - In Docker Desktop → Settings → Resources → WSL Integration, enable your WSL 2 distro.
+3. Verify GPU access inside Docker:
+   ```powershell
+   docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi
+   ```
+   If you see your GPU listed, GPU passthrough is working.
 
-# 3.6 Make Docker start on boot
-sudo systemctl enable docker
+> **No GPU?** Open `docker-compose.yml` and delete or comment out the entire `deploy:` block inside the `ollama` service. Ollama will run on CPU only (slower generation speed).
 
+---
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- PART 4 — OLLAMA (LOCAL LLM)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## Step 2 — Download the Project
 
-# 4.1 Install Ollama (auto-detects GPU)
-curl -fsSL https://ollama.com/install.sh | sh
+### Option A — Clone from GitHub (recommended)
 
-# 4.2 Enable auto-start
-sudo systemctl enable ollama
-sudo systemctl start ollama
-sleep 3
+```powershell
+git clone https://github.com/YOUR-ORG/YOUR-REPO.git goeic
+cd goeic
+```
 
-# Verify Ollama is running
-sudo systemctl status ollama --no-pager
-# Should show: Active: active (running)
+### Option B — Download ZIP
 
-# 4.3 Pull the AI model
-# For RTX 4070 Ti SUPER (16 GB VRAM) → 14B is best quality
-ollama pull qwen2.5:14b
+1. Go to the GitHub repository page.
+2. Click **Code → Download ZIP**.
+3. Extract the ZIP to a folder, e.g. `C:\goeic`.
+4. Open PowerShell and `cd` into that folder:
+   ```powershell
+   cd C:\goeic
+   ```
 
-# This takes 5-15 minutes on first run (8.5 GB download)
-# You can watch progress live
+---
 
-# Alternative smaller models:
-# ollama pull qwen2.5:7b    ← faster, uses ~5 GB VRAM
-# ollama pull qwen2.5:3b    ← fastest, lowest quality
+## Step 3 — Create the `.env` File
 
-# 4.4 Verify model + GPU usage
-ollama list
-# Should show: qwen2.5:14b   ...GB
+Copy the example file:
 
-# Test inference with GPU
-ollama run qwen2.5:14b "اختبار سريع"
+```powershell
+copy .env.example .env
+```
 
-# While running, in ANOTHER terminal check GPU:
- 
-# Should show: VRAM usage jumped to ~12000 MiB for 14B model
-# This confirms GPU is being used by Ollama ✅
+Open `.env` in Notepad (or VS Code) and fill in the values:
 
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- PART 5 — PYTHON ENVIRONMENT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-cd ~/goeic_rag
-
-# 5.1 Create virtual environment
-python3.11 -m venv venv
-source venv/bin/activate
-
-# Verify Python version
-python --version
-# Expected: Python 3.11.x
-
-# 5.2 Upgrade pip
-pip install --upgrade pip setuptools wheel
-
-# 5.3 Install PyTorch WITH CUDA 12.1 support
-# THIS IS THE KEY STEP FOR GPU SUPPORT
-pip install torch torchvision torchaudio \
-    --index-url https://download.pytorch.org/whl/cu121
-
-# ✅ Verify GPU works in PyTorch IMMEDIATELY after install
-python -c "
-import torch
-if torch.cuda.is_available():
-    print('✅ GPU WORKING:', torch.cuda.get_device_name(0))
-    print('   VRAM:', round(torch.cuda.get_device_properties(0).total_memory/1024**3,1), 'GB')
-else:
-    print('❌ GPU not detected by PyTorch')
-    print('   Check: nvidia-smi works? CUDA installed?')
-"
-
-# 5.4 Install project requirements
-pip install -r requirements_offline.txt
-
-# NOTE: If you see conflicts, install in this order:
-# pip install weaviate-client==4.9.3
-# pip install sentence-transformers==3.3.1
-# pip install openai-whisper==20231117
-# pip install fastapi uvicorn aiohttp httpx
-# pip install edge-tts bcrypt python-multipart
-# pip install beautifulsoup4 lxml requests
-# pip install pandas openpyxl python-docx
-# pip install langchain-text-splitters python-dotenv
-
-# 5.5 Verify all key imports
-python -c "
-import torch, whisper, weaviate, fastapi, edge_tts
-from sentence_transformers import SentenceTransformer
-print('✅ All imports OK')
-print('   GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU ONLY')
-"
-
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- PART 6 — PROJECT FILES + .env
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-# 6.1 Expected directory structure
-#
-# ~/goeic_rag/
-# ├── main_offline.py
-# ├── smart_scraper_offline.py
-# ├── smart_excel_uploader_offline.py
-# ├── requirements_offline.txt
-# ├── .env
-# ├── docker-compose.yml
-# ├── weaviate_data/             ← auto-created
-# ├── logs/                      ← auto-created by app
-# ├── uploads/                   ← auto-created by app
-# └── public/
-#     ├── index.html
-#     ├── dashboard.html         ← use dashboard_updated.html
-#     ├── login.html
-#     └── logo.png
-
-# 6.2 Copy files from Windows to Linux via SCP
-# Run this on your WINDOWS machine (Git Bash or PowerShell):
-#
-#   scp -r "D:/path/to/goeic_rag/*" username@SERVER_IP:~/goeic_rag/
-#
-# Or use WinSCP (GUI) to drag and drop files
-
-# 6.3 Create .env file
-cat > ~/goeic_rag/.env << 'EOF'
-# ── LLM Configuration ─────────────────────────────────────────
-OLLAMA_HOST=http://localhost:11434
+```env
+# ── Ollama ────────────────────────────────────────────
+OLLAMA_HOST=http://ollama:11434
 OLLAMA_MODEL=qwen2.5:14b
 OLLAMA_TIMEOUT=180
 
-# ── Embedding Model ────────────────────────────────────────────
+# ── Weaviate ──────────────────────────────────────────
+WEAVIATE_HOST=weaviate
+
+# ── Embeddings ────────────────────────────────────────
 EMBEDDING_MODEL=paraphrase-multilingual-MiniLM-L12-v2
 
-# ── Voice / Whisper ────────────────────────────────────────────
+# ── Whisper (voice) ───────────────────────────────────
+# Options: tiny, base, small, medium, large
 WHISPER_MODEL_SIZE=base
+```
 
-# ── Weaviate ───────────────────────────────────────────────────
-WEAVIATE_HOST=localhost
+> **Tip:** If you don't have a `.env.example` file, just create a new `.env` file with the content above.
 
-# ── Security ───────────────────────────────────────────────────
-# Change this in production!
-SECRET_KEY=change_this_to_a_long_random_string_in_production
-EOF
+---
 
-# 6.4 Set correct permissions
-chmod 600 ~/goeic_rag/.env
-chmod +x ~/goeic_rag/main_offline.py
+## Step 4 — Start All Services
 
+Run this command from the project folder:
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- PART 7 — FIRST RUN & SMOKE TESTS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```powershell
+docker compose up -d
+```
 
-cd ~/goeic_rag
-source venv/bin/activate
+Docker will:
+1. Pull the Ollama, Weaviate, and app images (~4 GB total on first run).
+2. Create the named volumes for persistent storage.
+3. Start all three containers.
 
-# 7.1 Create Weaviate schema (run ONCE before first start)
-python - << 'PYEOF'
-import weaviate
-from weaviate.classes.config import Configure, Property, DataType
+Check that all containers are running:
 
-client = weaviate.connect_to_local()
+```powershell
+docker compose ps
+```
 
-if not client.collections.exists("GOEIC_Knowledge_Base_V2"):
-    client.collections.create(
-        name="GOEIC_Knowledge_Base_V2",
-        properties=[
-            Property(name="content",     data_type=DataType.TEXT),
-            Property(name="title",       data_type=DataType.TEXT),
-            Property(name="url",         data_type=DataType.TEXT),
-            Property(name="category",    data_type=DataType.TEXT),
-            Property(name="language",    data_type=DataType.TEXT),
-            Property(name="source_type", data_type=DataType.TEXT),
-            Property(name="chunk_type",  data_type=DataType.TEXT),
-            Property(name="parent_id",   data_type=DataType.TEXT),
-            Property(name="content_hash",data_type=DataType.TEXT),
-        ]
-    )
-    print("✅ Collection created: GOEIC_Knowledge_Base_V2")
-else:
-    print("✅ Collection already exists")
+You should see `Up` (healthy) for all three services. The app takes about 60 seconds to become healthy on first start while it downloads the embedding model.
 
-client.close()
-PYEOF
+---
 
+## Step 5 — Download the LLM Model
 
-# 7.2 Start the application (foreground for first test)
-python main_offline.py
+This is a **one-time step**. The model is saved to a Docker volume and survives container restarts.
 
-# Expected startup output:
-# ✅ Embedding Model: paraphrase-multilingual-MiniLM-L12-v2
-# 🎮 GPU: NVIDIA GeForce RTX 4070 Ti SUPER (16.0GB VRAM)    ← GPU WORKING ✅
-# ✅ Local Embeddings on GPU
-# ✅ Weaviate Connected
-# ✅ Ollama Connected. Available models: ['qwen2.5:14b']
-# INFO: Uvicorn running on http://0.0.0.0:8000
+### For NVIDIA GPU (recommended — 14B parameter model):
 
-# 7.3 Quick smoke tests (open new terminal)
+```powershell
+docker exec -it goeic-ollama ollama pull qwen2.5:14b
+```
 
-# Test: Server running
+Download size: ~9 GB. This may take 10–30 minutes depending on your internet connection.
+
+### For CPU only (smaller, faster model):
+
+```powershell
+docker exec -it goeic-ollama ollama pull qwen2.5:7b
+```
+
+Download size: ~5 GB.
+
+After downloading, update `OLLAMA_MODEL` in your `.env` file to match the model name you pulled, then restart the app:
+
+```powershell
+docker compose restart app
+```
+
+---
+
+## Step 6 — Verify Everything Works
+
+### Check the health endpoint:
+
+```powershell
 curl http://localhost:8000/health
-# Expected: {"status":"healthy", "gpu":"NVIDIA GeForce RTX 4070 Ti SUPER ..."}
+```
 
-# Test: Chat page loads
-curl -s http://localhost:8000 | grep -o "<title>.*</title>"
-# Expected: <title>GOEIC Enterprise Assistant</title>
+Expected response:
 
-# Test: Admin login
-curl -s http://localhost:8000/admin | grep -o "<title>.*</title>"
-# Expected: <title>تسجيل الدخول - GOEIC Admin</title>
-
-# Press CTRL+C to stop, then proceed to Part 8 for production setup
-
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- PART 8 — SYSTEMD SERVICE (AUTO-START ON BOOT)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-# 8.1 Create systemd service file
-sudo tee /etc/systemd/system/goeic.service << EOF
-[Unit]
-Description=GOEIC Offline RAG Chatbot
-After=network.target docker.service
-Requires=docker.service
-
-[Service]
-Type=simple
-User=$USER
-WorkingDirectory=$HOME/goeic_rag
-Environment="PATH=$HOME/goeic_rag/venv/bin:/usr/local/cuda/bin:/usr/bin:/bin"
-ExecStartPre=/bin/bash -c 'cd $HOME/goeic_rag && docker compose up -d'
-ExecStartPre=/bin/sleep 10
-ExecStart=$HOME/goeic_rag/venv/bin/python $HOME/goeic_rag/main_offline.py
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=goeic
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# 8.2 Enable and start service
-sudo systemctl daemon-reload
-sudo systemctl enable goeic
-sudo systemctl start goeic
-
-# 8.3 Check service is running
-sudo systemctl status goeic --no-pager
-# Expected: Active: active (running)
-
-# 8.4 View live logs from service
-sudo journalctl -u goeic -f
-# Press CTRL+C to stop following
-
-# 8.5 Useful service commands
-sudo systemctl restart goeic   # Restart after code changes
-sudo systemctl stop goeic      # Stop
-sudo systemctl start goeic     # Start
-sudo journalctl -u goeic -n 50 # Last 50 log lines
-
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- PART 9 — NGINX REVERSE PROXY (PORT 80/443)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-# 9.1 Create Nginx config
-sudo tee /etc/nginx/sites-available/goeic << 'EOF'
-server {
-    listen 80;
-    server_name your_domain_or_ip;
-
-    # Increase upload size for Excel files
-    client_max_body_size 50M;
-
-    # ── WebSocket support (for live logs) ─────────────────────
-    location /ws/ {
-        proxy_pass         http://127.0.0.1:8000;
-        proxy_http_version 1.1;
-        proxy_set_header   Upgrade    $http_upgrade;
-        proxy_set_header   Connection "upgrade";
-        proxy_set_header   Host       $host;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-    }
-
-    # ── Main app ───────────────────────────────────────────────
-    location / {
-        proxy_pass         http://127.0.0.1:8000;
-        proxy_set_header   Host              $host;
-        proxy_set_header   X-Real-IP         $remote_addr;
-        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_set_header   X-Forwarded-Proto $scheme;
-        proxy_read_timeout 180s;
-    }
+```json
+{
+  "status": "healthy",
+  "mode": "FULLY OFFLINE",
+  "llm": "Ollama (qwen2.5:14b)",
+  "weaviate": true,
+  "ollama_ready": true
 }
-EOF
+```
 
-# 9.2 Enable site
-sudo ln -s /etc/nginx/sites-available/goeic /etc/nginx/sites-enabled/
-sudo nginx -t           # Test config syntax
-sudo systemctl reload nginx
+### Open the chat interface:
 
-# 9.3 Test (replace with your server IP)
-curl http://YOUR_SERVER_IP/health
+Navigate to **http://localhost:8000** in your browser.
 
-# 9.4 Optional: Add HTTPS with Let's Encrypt
-# sudo apt install certbot python3-certbot-nginx -y
-# sudo certbot --nginx -d yourdomain.com
+### Open the admin dashboard:
 
+Navigate to **http://localhost:8000/admin**
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- PART 10 — MONITORING COMMANDS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Default credentials:
+- **Username:** `admin`
+- **Password:** `goeic2026`
 
-# GPU monitoring (live - run in separate terminal)
-watch -n 1 nvidia-smi
-# Look for:
-#  Ollama process  → ~12000 MiB for 14B model during inference
-#  Python process  → ~1000 MiB for embedding model
-#  Total usage     → ~13000 MiB out of 16376 MiB
+> **Important:** Change the default password immediately after first login via **Dashboard → Admins → Change Password**.
 
-# RAM monitoring
-htop
-# Look for:
-#  Total used < 25 GB (leaving 5 GB free)
+---
 
-# Application logs (live)
-sudo journalctl -u goeic -f --no-pager
+## Step 7 — Index Your Data
 
-# Or tail log file directly
-tail -f ~/goeic_rag/logs/production_trace.log
+### 7.1 Scrape the GOEIC Website
 
-# Weaviate stats
-curl http://localhost:8080/v1/meta | python3 -m json.tool
+1. Log into the admin dashboard at http://localhost:8000/admin
+2. Click the **Data Management** tab.
+3. Click **Start Smart Scraping**.
+4. Monitor progress using the progress bar — first scrape takes 20–60 minutes.
 
-# Ollama running models
-curl http://localhost:11434/api/ps
+### 7.2 Upload Word Documents via Excel
 
-# Check all services at once
-sudo systemctl status goeic ollama docker --no-pager
+Prepare an Excel file (`.xlsx`) with these columns:
 
+| Column | Description | Example |
+|--------|-------------|---------|
+| `url` | Canonical web URL for this document | `https://www.goeic.gov.eg/ar/services/cert` |
+| `title` | Document title | `شهادة المطابقة` |
+| `category` | Category label | `الخدمات` |
+| `language` | Language code | `ar` / `en` / `fr` |
+| `path` | Relative path to the `.docx` file | `docs/cert.docx` |
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- PART 11 — TROUBLESHOOTING GPU
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Then:
 
-─── Problem: App logs show "⚠️ Local Embeddings on CPU" ────────
+1. In the admin dashboard, go to **Data Management**.
+2. Click **Choose File** and select your Excel file.
+3. Click **Upload & Index Locally**.
 
-  Cause 1: PyTorch installed without CUDA
-  Fix:
-    source ~/goeic_rag/venv/bin/activate
-    pip uninstall torch torchvision torchaudio -y
-    pip install torch torchvision torchaudio \
-        --index-url https://download.pytorch.org/whl/cu121
-    python -c "import torch; print(torch.cuda.is_available())"
-    # Must print True
+---
 
+## Common Commands
 
-  Cause 2: CUDA version mismatch (e.g. CUDA 12.6 but PyTorch wants 12.1)
-  Fix:
-    # Check your CUDA version
-    nvcc --version     # e.g. "release 12.4"
-    nvidia-smi         # e.g. "CUDA Version: 12.4"
+### View live logs
 
-    # Install matching PyTorch:
-    # CUDA 11.8 → --index-url .../whl/cu118
-    # CUDA 12.1 → --index-url .../whl/cu121  ← most common
-    # CUDA 12.4 → --index-url .../whl/cu124
+```powershell
+docker compose logs -f app
+```
 
+### Stop all services
 
-─── Problem: Ollama uses CPU not GPU ───────────────────────────
+```powershell
+docker compose down
+```
 
-  Check:
-    nvidia-smi dmon -s u    # watch GPU utilization live
-    # Run a query, GPU % should spike to 60-100%
+### Stop and remove all data (⚠️ deletes database!)
 
-  Fix 1: Reinstall Ollama after CUDA
-    sudo systemctl stop ollama
-    curl -fsSL https://ollama.com/install.sh | sh
-    sudo systemctl start ollama
-    ollama pull qwen2.5:14b
+```powershell
+docker compose down -v
+```
 
-  Fix 2: Force GPU with env variable
-    sudo tee /etc/systemd/system/ollama.service.d/override.conf << 'EOF'
-    [Service]
-    Environment="CUDA_VISIBLE_DEVICES=0"
-    EOF
-    sudo systemctl daemon-reload
-    sudo systemctl restart ollama
+### Restart only the application (after config change)
 
+```powershell
+docker compose restart app
+```
 
-─── Problem: "CUDA out of memory" ──────────────────────────────
+### Update to the latest app image
 
-  Your GPU: 16 GB VRAM
-  Typical usage:
-    qwen2.5:14b  → ~12 GB  ← recommended
-    qwen2.5:7b   → ~5 GB   ← if 14B fails
-    embeddings   → ~1 GB
+```powershell
+docker compose pull app
+docker compose up -d app
+```
 
-  Fix: Switch to 7B model in .env
-    OLLAMA_MODEL=qwen2.5:7b
-    sudo systemctl restart goeic
+### Check disk usage of volumes
 
+```powershell
+docker system df -v
+```
 
-─── Problem: "nvidia-smi not found" after reboot ───────────────
+---
 
-  Fix:
-    sudo apt install --reinstall nvidia-driver-550
-    sudo reboot
-    nvidia-smi  # should work now
+## Troubleshooting
 
+### App shows "Ollama not ready"
 
-─── Problem: Docker GPU not working ────────────────────────────
-  (Only needed if you want Weaviate on GPU - not required)
+- Check Ollama is running: `docker compose ps`
+- Check Ollama logs: `docker compose logs ollama`
+- Ensure the model is downloaded: `docker exec -it goeic-ollama ollama list`
 
-    sudo apt install nvidia-container-toolkit
-    sudo nvidia-ctk runtime configure --runtime=docker
-    sudo systemctl restart docker
+### Weaviate connection error on startup
 
+- Weaviate needs a few seconds to initialize. Wait 30 seconds and check: `docker compose logs weaviate`
+- Ensure ports 8080 and 50051 are not used by another process.
 
-─── Problem: WebSocket logs not showing in browser ─────────────
+### GPU not detected inside Ollama
 
-  Check Nginx config has WebSocket proxy (see Part 9)
-  Check browser console (F12):
-    Should show: "✅ متصل بخادم السجلات | Connected to log server"
+- Confirm `nvidia-smi` works on the host: run `nvidia-smi` in PowerShell.
+- Ensure Docker Desktop is using WSL 2 (Settings → General → "Use the WSL 2 based engine").
+- Restart Docker Desktop after installing the NVIDIA driver.
 
-  Test WebSocket directly:
-    # Install wscat
-    npm install -g wscat
-    wscat -c ws://localhost:8000/ws/logs
+### Port already in use
 
+If port 8000, 8080, or 11434 is already used by another application, edit `docker-compose.yml` and change the host port (left side of the colon):
 
-─── Problem: Voice not working ─────────────────────────────────
+```yaml
+ports:
+  - "8001:8000"   # change 8000 to 8001 (host:container)
+```
 
-  Check 1: FFmpeg installed
-    ffmpeg -version    # must work
+### Download logs from the admin dashboard
 
-  Check 2: Whisper installed
-    source ~/goeic_rag/venv/bin/activate
-    python -c "import whisper; print('OK')"
+1. Go to **Data Management** tab.
+2. Set the number of lines in the input box.
+3. Click **Download Logs** — a `.txt` file will be saved to your Downloads folder.
 
-  Check 3: Reinstall
-    pip install openai-whisper==20231117 ffmpeg-python
+---
 
-  Check 4: Test manually
-    python - << 'EOF'
-    import whisper
-    model = whisper.load_model("base")
-    print("✅ Whisper loaded OK")
-    EOF
+## Upgrading
 
+When a new version of the application is released on GitHub:
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- COMPLETE QUICK-START SUMMARY (copy-paste order)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```powershell
+# Pull the new image
+docker compose pull app
 
-# Run these commands IN ORDER on a fresh Ubuntu 22.04 server:
+# Restart the app container (Ollama and Weaviate data are unaffected)
+docker compose up -d app
+```
 
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y python3.11 python3.11-venv python3.11-dev build-essential git wget curl ffmpeg nginx
+Your Weaviate database and Ollama models are stored in Docker named volumes and are never touched by an app upgrade.
 
-# GPU Driver
-sudo ubuntu-drivers autoinstall && sudo reboot
-# (wait for reboot, then continue)
+---
 
-# CUDA
-wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
-sudo dpkg -i cuda-keyring_1.1-1_all.deb && sudo apt update && sudo apt install cuda-toolkit-12-4 -y
-echo 'export PATH=/usr/local/cuda/bin:$PATH' >> ~/.bashrc && source ~/.bashrc
+## Architecture Reference
 
-# Docker
-curl -fsSL https://get.docker.com | sudo sh && sudo usermod -aG docker $USER && newgrp docker
-sudo apt install docker-compose-plugin -y
+```
+Browser / Client
+      │
+      ▼
+  ┌─────────┐        ┌─────────────┐
+  │  App    │──────▶│   Ollama    │  (LLM inference, GPU)
+  │  :8000  │        │   :11434   │
+  │         │        └─────────────┘
+  │         │        ┌─────────────┐
+  │         │──────▶│  Weaviate   │  (Vector DB, volume)
+  └─────────┘        │  :8080     │
+                     └─────────────┘
+```
 
-# Ollama
-curl -fsSL https://ollama.com/install.sh | sh
-sudo systemctl enable ollama && sudo systemctl start ollama
-ollama pull qwen2.5:14b
-
-# Project Setup
-mkdir -p ~/goeic_rag/weaviate_data && cd ~/goeic_rag
-# [Copy your project files here via SCP or git]
-
-# Weaviate
-cat > docker-compose.yml << 'EOF'
-version: '3.4'
-services:
-  weaviate:
-    image: semitechnologies/weaviate:1.27.0
-    ports: ["8080:8080","50051:50051"]
-    environment:
-      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
-      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
-      DEFAULT_VECTORIZER_MODULE: 'none'
-    volumes: ["./weaviate_data:/var/lib/weaviate"]
-    restart: unless-stopped
-EOF
-docker compose up -d && sleep 15
-
-# Python Environment
-python3.11 -m venv venv && source venv/bin/activate
-pip install --upgrade pip
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-pip install -r requirements_offline.txt
-
-# Verify GPU
-python -c "import torch; print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'NOT FOUND')"
-
-# Create schema and run
-python -c "
-import weaviate
-from weaviate.classes.config import Configure, Property, DataType
-client = weaviate.connect_to_local()
-if not client.collections.exists('GOEIC_Knowledge_Base_V2'):
-    client.collections.create('GOEIC_Knowledge_Base_V2', properties=[
-        Property(name='content', data_type=DataType.TEXT),
-        Property(name='title', data_type=DataType.TEXT),
-        Property(name='url', data_type=DataType.TEXT),
-        Property(name='category', data_type=DataType.TEXT),
-        Property(name='language', data_type=DataType.TEXT),
-        Property(name='source_type', data_type=DataType.TEXT),
-        Property(name='chunk_type', data_type=DataType.TEXT),
-        Property(name='parent_id', data_type=DataType.TEXT),
-        Property(name='content_hash', data_type=DataType.TEXT),
-    ])
-    print('✅ Schema created')
-client.close()
-"
-
-python main_offline.py
-# 🎉 Server running on http://0.0.0.0:8000
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- EXPECTED STARTUP LOG (with GPU working correctly)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-2026-02-17 10:00:01 | INFO | init_embeddings | 🔄 Loading local embedding model...
-2026-02-17 10:00:04 | INFO | init_embeddings | 🎮 GPU: NVIDIA GeForce RTX 4070 Ti SUPER (16.0GB VRAM)
-2026-02-17 10:00:04 | INFO | init_embeddings | ✅ Local Embeddings on GPU     ← GPU CONFIRMED ✅
-2026-02-17 10:00:04 | INFO | init_embeddings | ✅ Embedding Model: paraphrase-multilingual-MiniLM-L12-v2
-2026-02-17 10:00:05 | INFO | <module>        | ✅ Weaviate Connected
-2026-02-17 10:00:05 | INFO | <module>        | ════════════════════════════
-2026-02-17 10:00:05 | INFO | <module>        | 🚀 GOEIC Enterprise OFFLINE V2
-2026-02-17 10:00:05 | INFO | <module>        | 🤖 LLM: Ollama (qwen2.5:14b)
-2026-02-17 10:00:05 | INFO | <module>        | 📊 Embeddings: Local (paraphrase-multilingual-MiniLM-L12-v2)
-2026-02-17 10:00:05 | INFO | <module>        | 🎮 GPU: RTX 4070 Ti SUPER
-2026-02-17 10:00:05 | INFO | <module>        | 💰 API Costs: $0.00 (100% OFFLINE)
-2026-02-17 10:00:06 | INFO | lifespan        | ✅ Ollama Connected. Available models: ['qwen2.5:14b']
-INFO:                                           Uvicorn running on http://0.0.0.0:8000
-
-# If you see "⚠️ Local Embeddings on CPU" → see Part 11 GPU troubleshooting
+All traffic stays on your local machine. No data is sent to external APIs.

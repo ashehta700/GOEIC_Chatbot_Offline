@@ -40,7 +40,7 @@ BLACKLIST_TITLES = [
 
 BLACKLIST_URL_PATTERNS = [
     "login", "signin", "register", "forgot-password",
-    "ask-us", "callUs", "contact-form"
+     "contact-form"
 ]
 
 # Logging

@@ -1,25 +1,61 @@
-FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+# ═══════════════════════════════════════════════════════════════
+# GOEIC Enterprise Assistant — App Image (CPU-only, no CUDA)
+# Ollama + Weaviate run as separate containers.
+# ═══════════════════════════════════════════════════════════════
+FROM python:3.11-slim
 
-# Install Python and FFmpeg
-RUN apt-get update && apt-get install -y \
-    python3.11 \
-    python3-pip \
-    ffmpeg \
+# ── system deps (FFmpeg for Whisper, build tools for torch) ──
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        libsndfile1 \
+        curl \
+        git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy and install requirements
-COPY requirements_offline.txt .
-RUN pip3 install --upgrade pip
-RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-RUN pip3 install --no-cache-dir -r requirements_offline.txt
+# ── pip requirements ──────────────────────────────────────────
+COPY requirements.txt .
 
-# Copy all files
-COPY . .
+# Install torch CPU-only first (avoids downloading 2GB+ CUDA build)
+RUN pip install --no-cache-dir \
+        torch==2.1.0+cpu \
+        --index-url https://download.pytorch.org/whl/cpu
 
-# CHANGE: Expose 5000 instead of 8000
-EXPOSE 5000
+# Install remaining deps (sentence-transformers will pick up the CPU torch)
+RUN pip install --no-cache-dir -r requirements.txt
 
-# CHANGE: Force uvicorn to run on 5000
-CMD ["uvicorn", "main_offline:app", "--host", "0.0.0.0", "--port", "5000"]
+# ── copy application source ───────────────────────────────────
+COPY main_offline.py .
+COPY smart_scraper_offline.py .
+COPY smart_excel_uploader_offline.py .
+COPY smart_cleanup.py .
+
+# Copy public assets if they exist
+COPY public/ ./public/
+
+# ── pre-download the embedding model so the first startup is fast ──
+RUN python -c "from sentence_transformers import SentenceTransformer; \
+               SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')" \
+    || echo "⚠️  Embedding model download failed — will retry at runtime"
+
+# ── runtime directories ───────────────────────────────────────
+RUN mkdir -p logs uploads
+
+# ── environment defaults (override via .env or docker-compose) ──
+ENV OLLAMA_HOST=http://ollama:11434 \
+    OLLAMA_MODEL=qwen2.5:14b \
+    OLLAMA_TIMEOUT=180 \
+    WEAVIATE_HOST=weaviate \
+    EMBEDDING_MODEL=paraphrase-multilingual-MiniLM-L12-v2 \
+    WHISPER_MODEL_SIZE=base \
+    PYTHONUNBUFFERED=1
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+CMD ["python", "-m", "uvicorn", "main_offline:app", \
+     "--host", "0.0.0.0", "--port", "8000", \
+     "--workers", "1", "--log-level", "info"]
