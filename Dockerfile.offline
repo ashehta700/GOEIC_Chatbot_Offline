@@ -1,59 +1,116 @@
 # ═══════════════════════════════════════════════════════════════
-# GOEIC Enterprise Assistant — App Image (CPU-only, no CUDA)
-# Ollama + Weaviate run as separate containers.
+# GOEIC Enterprise Assistant — App Image
+#
+# ✅ CUDA-enabled: embedding model + Whisper run on GPU
+# ✅ Embedding model pre-baked into image (no download on startup)
+# ✅ Whisper model pre-baked into image (no download on startup)
+# ✅ FFmpeg included for Whisper audio processing
+# ✅ All scraping dependencies included
+#
+# GPU inference for LLM → Ollama container (separate)
+# GPU inference for embeddings + Whisper → THIS container
 # ═══════════════════════════════════════════════════════════════
-FROM python:3.11-slim
 
-# ── system deps (FFmpeg for Whisper, build tools for torch) ──
+# Use CUDA 12.1 + cuDNN 8 on Ubuntu 22.04
+# Compatible with RTX 4070 Ti SUPER and most modern NVIDIA GPUs
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+
+# ── Build args (can override at build time) ───────────────────
+ARG EMBEDDING_MODEL=paraphrase-multilingual-mpnet-base-v2
+ARG WHISPER_MODEL_SIZE=base
+ARG PYTHON_VERSION=3.11
+
+# ── Avoid interactive prompts during apt installs ─────────────
+ENV DEBIAN_FRONTEND=noninteractive
+
+# ── System dependencies ───────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 \
+        python3.11-dev \
+        python3-pip \
+        python3.11-distutils \
         ffmpeg \
         libsndfile1 \
+        libgomp1 \
         curl \
         git \
+        ca-certificates \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# ── pip requirements ──────────────────────────────────────────
-COPY requirements.txt .
+# ── Upgrade pip ───────────────────────────────────────────────
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Install torch CPU-only first (avoids downloading 2GB+ CUDA build)
+# ── Install PyTorch with CUDA 12.1 support ───────────────────
+# Must be installed BEFORE sentence-transformers and whisper
+# so they pick up the GPU-enabled torch automatically.
 RUN pip install --no-cache-dir \
-        torch==2.1.0+cpu \
-        --index-url https://download.pytorch.org/whl/cpu
+        torch==2.2.2 \
+        torchaudio==2.2.2 \
+        --index-url https://download.pytorch.org/whl/cu121
 
-# Install remaining deps (sentence-transformers will pick up the CPU torch)
+# ── Copy and install Python requirements ──────────────────────
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# ── copy application source ───────────────────────────────────
+# ── Install Whisper (after torch so it gets GPU torch) ────────
+RUN pip install --no-cache-dir openai-whisper==20240930
+
+# ── Copy application source ───────────────────────────────────
 COPY main_offline.py .
 COPY smart_scraper_offline.py .
 COPY smart_excel_uploader_offline.py .
-COPY smart_cleaner.py .
-
-# Copy public assets if they exist
+COPY smart_cleanup.py .
 COPY public/ ./public/
 
-# ── pre-download the embedding model so the first startup is fast ──
-RUN python -c "from sentence_transformers import SentenceTransformer; \
-               SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')" \
-    || echo "⚠️  Embedding model download failed — will retry at runtime"
+# ── Pre-download embedding model into the image ───────────────
+# Stored at /root/.cache/huggingface (baked in, not a volume)
+# Zero download time on container startup.
+RUN python -c "\
+import os; \
+os.environ['TRANSFORMERS_OFFLINE'] = '0'; \
+from sentence_transformers import SentenceTransformer; \
+print(f'📥 Downloading embedding model: ${EMBEDDING_MODEL}'); \
+model = SentenceTransformer('${EMBEDDING_MODEL}'); \
+print('✅ Embedding model downloaded successfully'); \
+" || (echo "⚠️  Embedding download failed — will retry at runtime" && true)
 
-# ── runtime directories ───────────────────────────────────────
+# ── Pre-download Whisper model into the image ─────────────────
+# Stored at /root/.cache/whisper (baked in, not a volume)
+# Zero download time on container startup.
+RUN python -c "\
+import whisper; \
+print(f'📥 Downloading Whisper model: ${WHISPER_MODEL_SIZE}'); \
+model = whisper.load_model('${WHISPER_MODEL_SIZE}'); \
+print('✅ Whisper model downloaded successfully'); \
+" || (echo "⚠️  Whisper download failed — will retry at runtime" && true)
+
+# ── Runtime directories ───────────────────────────────────────
 RUN mkdir -p logs uploads
 
-# ── environment defaults (override via .env or docker-compose) ──
+# ── Environment defaults (all overridable via .env) ──────────
 ENV OLLAMA_HOST=http://ollama:11434 \
-    OLLAMA_MODEL=qwen2.5:14b \
-    OLLAMA_TIMEOUT=180 \
+    OLLAMA_MODEL=qwen2.5:72b \
+    OLLAMA_TIMEOUT=300 \
     WEAVIATE_HOST=weaviate \
-    EMBEDDING_MODEL=paraphrase-multilingual-MiniLM-L12-v2 \
+    EMBEDDING_MODEL=paraphrase-multilingual-mpnet-base-v2 \
     WHISPER_MODEL_SIZE=base \
+    # Tell HuggingFace to use the pre-baked cache
+    HF_HOME=/root/.cache/huggingface \
+    TRANSFORMERS_CACHE=/root/.cache/huggingface \
+    # Tell Whisper to use the pre-baked cache
+    XDG_CACHE_HOME=/root/.cache \
+    # CUDA visibility
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
     PYTHONUNBUFFERED=1
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=15s --start-period=90s --retries=5 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 CMD ["python", "-m", "uvicorn", "main_offline:app", \

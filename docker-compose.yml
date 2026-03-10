@@ -2,18 +2,16 @@
 # GOEIC Enterprise Assistant — Full Stack
 #
 # Services:
-#   1. ollama   — local LLM server (GPU-aware)
-#   2. weaviate — vector database with persistent volume
-#   3. app      — FastAPI application (CPU, reads .env)
+#   1. ollama   — local LLM server (GPU, qwen2.5:72b)
+#   2. weaviate — vector database (persistent local volume)
+#   3. app      — FastAPI + Embeddings + Whisper (GPU-enabled)
 #
-# Quick start:
+# Quick start (first time):
 #   docker compose up -d
+#   docker exec -it goeic-ollama ollama pull qwen2.5:72b
 #
-# Pull the model once after first start:
-#   docker exec -it goeic-ollama ollama pull qwen2.5:14b
-#
-# GPU (NVIDIA) — works out of the box if nvidia-container-toolkit
-# is installed. Comment out the `deploy:` block to run on CPU only.
+# GPU requires nvidia-container-toolkit on host.
+# To run CPU-only: remove all deploy: blocks below.
 # ═══════════════════════════════════════════════════════════════
 
 version: "3.9"
@@ -21,9 +19,8 @@ version: "3.9"
 services:
 
   # ─────────────────────────────────────────────────────────────
-  # 1. OLLAMA — Local LLM Server
-  #    GPU: requires nvidia-container-toolkit on the host
-  #    CPU: remove / comment the deploy: section below
+  # 1. OLLAMA — Local LLM Server (GPU)
+  #    Runs qwen2.5:72b on GPU — completely separate from app
   # ─────────────────────────────────────────────────────────────
   ollama:
     image: ollama/ollama:latest
@@ -36,15 +33,13 @@ services:
     environment:
       - OLLAMA_KEEP_ALIVE=24h
       - OLLAMA_NUM_PARALLEL=1
-    # ── GPU support (comment out if no GPU) ──────────────────
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: all                 # use "1" to limit to one GPU
+              count: all
               capabilities: [gpu]
-    # ─────────────────────────────────────────────────────────
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
       interval: 30s
@@ -56,6 +51,7 @@ services:
 
   # ─────────────────────────────────────────────────────────────
   # 2. WEAVIATE — Vector Database
+  #    Data stored at your local Windows path
   # ─────────────────────────────────────────────────────────────
   weaviate:
     image: semitechnologies/weaviate:1.27.2
@@ -85,6 +81,9 @@ services:
 
   # ─────────────────────────────────────────────────────────────
   # 3. APP — GOEIC FastAPI Application
+  #    ✅ GPU-enabled: embeddings + Whisper run on GPU
+  #    ✅ Models pre-baked into image (zero download on startup)
+  #    ✅ Port 8000
   # ─────────────────────────────────────────────────────────────
   app:
     image: ghcr.io/${GITHUB_REPOSITORY:-your-org/goeic}/goeic-offline:latest
@@ -100,12 +99,25 @@ services:
       - app_logs:/app/logs              # persist logs across restarts
       - app_uploads:/app/uploads        # persist uploaded Excel files
       - ./public:/app/public:ro         # serve static files (read-only)
+      # NOTE: NO whisper_cache or HF_cache volumes here.
+      # Both models are baked INTO the image — no external cache needed.
     env_file:
-      - .env                            # load secrets from .env file
+      - .env
     environment:
-      # These override .env defaults; .env takes precedence for secrets
+      # These override .env — point to other containers by service name
       OLLAMA_HOST: "http://ollama:11434"
+      OLLAMA_MODEL: "qwen2.5:72b"
       WEAVIATE_HOST: "weaviate"
+      OLLAMA_TIMEOUT: "300"
+    # ── GPU access for embeddings + Whisper ──────────────────
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # ─────────────────────────────────────────────────────────
     depends_on:
       ollama:
         condition: service_healthy
@@ -121,13 +133,12 @@ services:
       - goeic_net
 
 # ─────────────────────────────────────────────────────────────
-# VOLUMES  (named — data survives container restarts/upgrades)
+# VOLUMES
 # ─────────────────────────────────────────────────────────────
 volumes:
   ollama_data:
     driver: local
-  weaviate_data:
-    driver: local
+  # weaviate_data is a bind mount (Windows path) — no named volume needed
   app_logs:
     driver: local
   app_uploads:

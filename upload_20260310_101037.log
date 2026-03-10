@@ -1,0 +1,112 @@
+2026-03-10 10:10:37,170 - INFO - 📥 Loading embedding model...
+2026-03-10 10:10:37,178 - INFO - Use pytorch device_name: cpu
+2026-03-10 10:10:37,178 - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-03-10 10:10:38,692 - INFO - ✅ [b860928f] GET /api/admin/scraping-status | 0.00s
+2026-03-10 10:10:38,693 - INFO - ✅ [3fb5f778] GET /api/admin/upload-status | 0.00s
+2026-03-10 10:10:41,093 - INFO - ✅ Embedding model loaded
+2026-03-10 10:10:41,300 - INFO - ✅ [7211eaf8] GET /api/admin/scraping-status | 0.00s
+2026-03-10 10:10:41,312 - INFO - ✅ [71cfd7dd] GET /api/admin/upload-status | 0.01s
+2026-03-10 10:10:41,676 - INFO - 📊 Found 1 rows in Excel
+2026-03-10 10:10:42,351 - INFO - HTTP Request: GET http://localhost:8080/v1/.well-known/openid-configuration "HTTP/1.1 404 Not Found"
+2026-03-10 10:10:43,074 - INFO - HTTP Request: GET http://localhost:8080/v1/meta "HTTP/1.1 200 OK"
+2026-03-10 10:10:44,132 - INFO - HTTP Request: GET https://pypi.org/pypi/weaviate-client/json "HTTP/1.1 200 OK"
+2026-03-10 10:10:44,312 - INFO - ✅ [9445b569] GET /api/admin/upload-status | 0.00s
+2026-03-10 10:10:44,337 - INFO - ✅ [ee8878cc] GET /api/admin/scraping-status | 0.03s
+2026-03-10 10:10:45,723 - INFO - ✅ Loaded 523 existing PDF/DOC files
+2026-03-10 10:10:45,736 - INFO - HTTP Request: GET http://localhost:8080/v1/schema/GOEIC_Knowledge_Base_V2 "HTTP/1.1 200 OK"
+2026-03-10 10:10:45,758 - INFO - HTTP Request: GET http://localhost:8080/v1/nodes "HTTP/1.1 200 OK"
+2026-03-10 10:10:45,771 - INFO - ✅ Upload completed: {'total': 1, 'new': 0, 'updated': 0, 'skipped': 0, 'missing_files': 1, 'errors': 0}
+2026-03-10 10:10:47,308 - INFO - ✅ [aab753ea] GET /api/admin/upload-status | 0.00s
+2026-03-10 10:10:47,310 - INFO - ✅ [0d02450f] GET /api/admin/scraping-status | 0.00s
+2026-03-10 10:12:02,076 - INFO - 📄 Excel uploaded: uploads/excel_20260310_101202.xlsx by admin
+2026-03-10 10:12:02,077 - INFO - ✅ [6e031660] POST /api/admin/upload-excel | 0.00s
+2026-03-10 10:12:02,078 - INFO - 📊 Starting Excel upload: uploads/excel_20260310_101202.xlsx
+2026-03-10 10:12:02,105 - INFO - 📊 Found 1 rows in Excel
+2026-03-10 10:12:02,717 - INFO - HTTP Request: GET http://localhost:8080/v1/.well-known/openid-configuration "HTTP/1.1 404 Not Found"
+2026-03-10 10:12:03,411 - INFO - HTTP Request: GET http://localhost:8080/v1/meta "HTTP/1.1 200 OK"
+2026-03-10 10:12:04,332 - INFO - HTTP Request: GET https://pypi.org/pypi/weaviate-client/json "HTTP/1.1 200 OK"
+2026-03-10 10:12:04,718 - INFO - ✅ Loaded 523 existing PDF/DOC files
+2026-03-10 10:12:04,762 - INFO - HTTP Request: GET http://localhost:8080/v1/schema/GOEIC_Knowledge_Base_V2 "HTTP/1.1 200 OK"
+2026-03-10 10:12:04,766 - INFO - HTTP Request: GET http://localhost:8080/v1/nodes "HTTP/1.1 200 OK"
+2026-03-10 10:12:04,777 - INFO - ✅ Upload completed: {'total': 1, 'new': 0, 'updated': 0, 'skipped': 0, 'missing_files': 1, 'errors': 0}
+2026-03-10 10:12:05,086 - INFO - ✅ [0b86bd75] GET /api/admin/scraping-status | 0.00s
+2026-03-10 10:12:05,090 - INFO - ✅ [75dd1eb3] GET /api/admin/upload-status | 0.00s
+2026-03-10 10:12:53,131 - INFO - ✅ [f4f7e4f3] GET /api/stats | 0.01s
+2026-03-10 10:12:55,308 - INFO - ✅ [d517fb08] GET /api/admin/scraping-status | 0.00s
+2026-03-10 10:12:55,309 - INFO - ✅ [69301328] GET /api/admin/upload-status | 0.00s
+2026-03-10 10:13:02,935 - INFO - 📄 Excel uploaded: uploads/excel_20260310_101302.xlsx by admin
+2026-03-10 10:13:02,936 - INFO - ✅ [7d0f190a] POST /api/admin/upload-excel | 0.01s
+2026-03-10 10:13:02,938 - INFO - 📊 Starting Excel upload: uploads/excel_20260310_101302.xlsx
+2026-03-10 10:13:02,970 - INFO - 📊 Found 1 rows in Excel
+2026-03-10 10:13:03,755 - INFO - HTTP Request: GET http://localhost:8080/v1/.well-known/openid-configuration "HTTP/1.1 404 Not Found"
+2026-03-10 10:13:04,263 - INFO - HTTP Request: GET http://localhost:8080/v1/meta "HTTP/1.1 200 OK"
+2026-03-10 10:13:04,856 - INFO - HTTP Request: GET https://pypi.org/pypi/weaviate-client/json "HTTP/1.1 200 OK"
+2026-03-10 10:13:05,086 - INFO - ✅ Loaded 523 existing PDF/DOC files
+2026-03-10 10:13:05,095 - INFO - HTTP Request: GET http://localhost:8080/v1/schema/GOEIC_Knowledge_Base_V2 "HTTP/1.1 200 OK"
+2026-03-10 10:13:05,098 - INFO - HTTP Request: GET http://localhost:8080/v1/nodes "HTTP/1.1 200 OK"
+2026-03-10 10:13:05,108 - INFO - ✅ Upload completed: {'total': 1, 'new': 0, 'updated': 0, 'skipped': 0, 'missing_files': 1, 'errors': 0}
+2026-03-10 10:13:06,693 - INFO - ✅ [cab88c8f] GET /api/admin/scraping-status | 0.00s
+2026-03-10 10:13:06,694 - INFO - ✅ [288dcfa3] GET /api/admin/upload-status | 0.00s
+2026-03-10 10:14:16,481 - INFO - ✅ [78c245d1] GET /api/stats | 0.01s
+2026-03-10 10:14:17,241 - INFO - ✅ [826ceac5] GET /api/admin/scraping-status | 0.00s
+2026-03-10 10:14:17,242 - INFO - ✅ [6dbfe41a] GET /api/admin/upload-status | 0.00s
+2026-03-10 10:14:25,287 - INFO - 📄 Excel uploaded: uploads/excel_20260310_101425.xlsx by admin
+2026-03-10 10:14:25,288 - INFO - ✅ [ca50b8a6] POST /api/admin/upload-excel | 0.01s
+2026-03-10 10:14:25,290 - INFO - 📊 Starting Excel upload: uploads/excel_20260310_101425.xlsx
+2026-03-10 10:14:25,322 - INFO - 📊 Found 1 rows in Excel
+2026-03-10 10:14:25,990 - INFO - HTTP Request: GET http://localhost:8080/v1/.well-known/openid-configuration "HTTP/1.1 404 Not Found"
+2026-03-10 10:14:26,683 - INFO - HTTP Request: GET http://localhost:8080/v1/meta "HTTP/1.1 200 OK"
+2026-03-10 10:14:27,905 - INFO - HTTP Request: GET https://pypi.org/pypi/weaviate-client/json "HTTP/1.1 200 OK"
+2026-03-10 10:14:28,242 - INFO - ✅ Loaded 523 existing PDF/DOC files
+2026-03-10 10:14:28,246 - INFO - HTTP Request: GET http://localhost:8080/v1/schema/GOEIC_Knowledge_Base_V2 "HTTP/1.1 200 OK"
+2026-03-10 10:14:28,249 - INFO - HTTP Request: GET http://localhost:8080/v1/nodes "HTTP/1.1 200 OK"
+2026-03-10 10:14:28,296 - INFO - ✅ [e7ef8a66] GET /api/admin/scraping-status | 0.00s
+2026-03-10 10:14:28,300 - INFO - ✅ [3531ff78] GET /api/admin/upload-status | 0.00s
+2026-03-10 10:14:28,301 - INFO - ✅ Upload completed: {'total': 1, 'new': 0, 'updated': 0, 'skipped': 1, 'missing_files': 0, 'errors': 0}
+2026-03-10 10:14:31,302 - INFO - ✅ [ff5f69e5] GET /api/admin/scraping-status | 0.00s
+2026-03-10 10:14:31,303 - INFO - ✅ [065a7aae] GET /api/admin/upload-status | 0.00s
+2026-03-10 10:14:51,234 - INFO - ✅ [e1a7595c] GET /api/stats | 0.01s
+2026-03-10 10:14:52,408 - INFO - ✅ [635cf53f] GET /api/admin/scraping-status | 0.00s
+2026-03-10 10:14:52,409 - INFO - ✅ [4dae6181] GET /api/admin/upload-status | 0.00s
+2026-03-10 10:14:59,696 - INFO - 📄 Excel uploaded: uploads/excel_20260310_101459.xlsx by admin
+2026-03-10 10:14:59,697 - INFO - ✅ [a72475e6] POST /api/admin/upload-excel | 0.00s
+2026-03-10 10:14:59,699 - INFO - 📊 Starting Excel upload: uploads/excel_20260310_101459.xlsx
+2026-03-10 10:14:59,739 - INFO - 📊 Found 1 rows in Excel
+2026-03-10 10:15:00,612 - INFO - HTTP Request: GET http://localhost:8080/v1/.well-known/openid-configuration "HTTP/1.1 404 Not Found"
+2026-03-10 10:15:01,415 - INFO - HTTP Request: GET http://localhost:8080/v1/meta "HTTP/1.1 200 OK"
+2026-03-10 10:15:02,329 - INFO - HTTP Request: GET https://pypi.org/pypi/weaviate-client/json "HTTP/1.1 200 OK"
+2026-03-10 10:15:02,658 - INFO - ✅ Loaded 523 existing PDF/DOC files
+2026-03-10 10:15:02,663 - INFO - HTTP Request: GET http://localhost:8080/v1/schema/GOEIC_Knowledge_Base_V2 "HTTP/1.1 200 OK"
+2026-03-10 10:15:02,670 - INFO - HTTP Request: GET http://localhost:8080/v1/nodes "HTTP/1.1 200 OK"
+2026-03-10 10:15:02,698 - INFO - ✅ Upload completed: {'total': 1, 'new': 0, 'updated': 0, 'skipped': 1, 'missing_files': 0, 'errors': 0}
+2026-03-10 10:15:03,695 - INFO - ✅ [a30ffb8f] GET /api/admin/scraping-status | 0.00s
+2026-03-10 10:15:03,698 - INFO - ✅ [28ee18ee] GET /api/admin/upload-status | 0.00s
+2026-03-10 10:15:30,962 - INFO - 🌐 Website scraping triggered by: admin
+2026-03-10 10:15:30,963 - INFO - ✅ [d6741944] POST /api/admin/scrape-website | 0.00s
+2026-03-10 10:15:31,019 - INFO - 📥 Loading embedding model...
+2026-03-10 10:15:31,022 - INFO - Use pytorch device_name: cpu
+2026-03-10 10:15:31,022 - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-03-10 10:15:34,682 - INFO - ✅ [515c7960] GET /api/admin/scraping-status | 0.00s
+2026-03-10 10:15:34,685 - INFO - ✅ [7503bfc8] GET /api/admin/upload-status | 0.00s
+2026-03-10 10:15:34,976 - INFO - ✅ Embedding model loaded
+2026-03-10 10:15:35,281 - INFO - HTTP Request: GET http://localhost:8080/v1/.well-known/openid-configuration "HTTP/1.1 404 Not Found"
+2026-03-10 10:15:35,566 - INFO - HTTP Request: GET http://localhost:8080/v1/meta "HTTP/1.1 200 OK"
+2026-03-10 10:15:36,206 - INFO - HTTP Request: GET https://pypi.org/pypi/weaviate-client/json "HTTP/1.1 200 OK"
+2026-03-10 10:15:36,329 - INFO - ✅ Weaviate connected for scraping task
+2026-03-10 10:15:36,330 - INFO - 🧹 Running pre-scrape duplicate cleanup...
+2026-03-10 10:15:37,685 - INFO - ✅ [77a9cb22] GET /api/admin/scraping-status | 0.00s
+2026-03-10 10:15:37,686 - INFO - ✅ [2eceec8f] GET /api/admin/upload-status | 0.00s
+2026-03-10 10:15:38,956 - INFO - ✅ Cleanup: database is already clean
+2026-03-10 10:15:40,036 - INFO - ✅ [c5335fa0] GET /api/admin/upload-status | 0.03s
+2026-03-10 10:15:40,047 - INFO - ✅ [8e56d560] GET /api/admin/scraping-status | 0.04s
+2026-03-10 10:15:40,087 - INFO - ✅ Loaded 9082 existing URLs from database
+2026-03-10 10:15:40,092 - INFO - 🔍 Duplicate detector ready: 9082 existing URLs
+2026-03-10 10:15:40,094 - INFO - 🚀 Starting smart scrape (max: 6000 pages)
+2026-03-10 10:15:40,094 - INFO - 📊 Existing URLs in DB: 9082
+2026-03-10 10:15:43,682 - INFO - ✅ [0127856a] GET /api/admin/scraping-status | 0.00s
+2026-03-10 10:15:43,683 - INFO - ✅ [0e940ae3] GET /api/admin/upload-status | 0.00s
+2026-03-10 10:15:46,028 - INFO - 🔄 UPDATED: الهيئة العامة للرقابة على الصادرات والواردات
+2026-03-10 10:15:46,677 - INFO - ✅ [68a238d1] GET /api/admin/upload-status | 0.00s
+2026-03-10 10:15:46,678 - INFO - ✅ [61ab83ac] GET /api/admin/scraping-status | 0.00s
+2026-03-10 10:15:49,681 - INFO - ✅ [e6cf9377] GET /api/admin/scraping-status | 0.00s
+2026-03-10 10:15:49,683 - INFO - ✅ [08017901] GET /api/admin/upload-status | 0.00s
