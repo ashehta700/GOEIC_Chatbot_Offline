@@ -63,7 +63,7 @@ RUN pip install --no-cache-dir openai-whisper==20240930
 COPY main_offline.py .
 COPY smart_scraper_offline.py .
 COPY smart_excel_uploader_offline.py .
-COPY smart_cleanup.py .
+COPY smart_cleaner.py .
 COPY public/ ./public/
 
 # ── Pre-download embedding model into the image ───────────────
