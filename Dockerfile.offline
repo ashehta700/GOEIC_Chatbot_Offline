@@ -6,21 +6,15 @@
 # ✅ Whisper model pre-baked into image (no download on startup)
 # ✅ FFmpeg included for Whisper audio processing
 # ✅ All scraping dependencies included
-#
-# GPU inference for LLM → Ollama container (separate)
-# GPU inference for embeddings + Whisper → THIS container
 # ═══════════════════════════════════════════════════════════════
 
-# Use CUDA 12.1 + cuDNN 8 on Ubuntu 22.04
-# Compatible with RTX 4070 Ti SUPER and most modern NVIDIA GPUs
 FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
 
-# ── Build args (can override at build time) ───────────────────
+# ── Build args ────────────────────────────────────────────────
 ARG EMBEDDING_MODEL=paraphrase-multilingual-mpnet-base-v2
 ARG WHISPER_MODEL_SIZE=base
-ARG PYTHON_VERSION=3.11
 
-# ── Avoid interactive prompts during apt installs ─────────────
+# ── Avoid interactive prompts ─────────────────────────────────
 ENV DEBIAN_FRONTEND=noninteractive
 
 # ── System dependencies ───────────────────────────────────────
@@ -44,20 +38,24 @@ WORKDIR /app
 # ── Upgrade pip ───────────────────────────────────────────────
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# ── Install PyTorch with CUDA 12.1 support ───────────────────
-# Must be installed BEFORE sentence-transformers and whisper
-# so they pick up the GPU-enabled torch automatically.
+# ── Step 1: PyTorch with CUDA 12.1 ───────────────────────────
+# Must be first — sentence-transformers + whisper will use this GPU torch
 RUN pip install --no-cache-dir \
         torch==2.2.2 \
         torchaudio==2.2.2 \
         --index-url https://download.pytorch.org/whl/cu121
 
-# ── Copy and install Python requirements ──────────────────────
+# ── Step 2: App requirements ──────────────────────────────────
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# ── Install Whisper (after torch so it gets GPU torch) ────────
-RUN pip install --no-cache-dir openai-whisper==20240930
+# ── Step 3: Whisper ───────────────────────────────────────────
+# No version pin — gets latest release compatible with torch 2.2.2
+# numba + llvmlite pinned to avoid conflicts
+RUN pip install --no-cache-dir \
+        "openai-whisper" \
+        "numba>=0.57.0" \
+        "llvmlite>=0.40.0"
 
 # ── Copy application source ───────────────────────────────────
 COPY main_offline.py .
@@ -66,53 +64,47 @@ COPY smart_excel_uploader_offline.py .
 COPY smart_cleaner.py .
 COPY public/ ./public/
 
-# ── Pre-download embedding model into the image ───────────────
-# Stored at /root/.cache/huggingface (baked in, not a volume)
-# Zero download time on container startup.
-RUN python -c "\
+# ── Pre-bake embedding model into the image ───────────────────
+RUN python3 -c "\
 import os; \
 os.environ['TRANSFORMERS_OFFLINE'] = '0'; \
 from sentence_transformers import SentenceTransformer; \
-print(f'📥 Downloading embedding model: ${EMBEDDING_MODEL}'); \
-model = SentenceTransformer('${EMBEDDING_MODEL}'); \
-print('✅ Embedding model downloaded successfully'); \
-" || (echo "⚠️  Embedding download failed — will retry at runtime" && true)
+print('Downloading embedding model: ${EMBEDDING_MODEL}'); \
+SentenceTransformer('${EMBEDDING_MODEL}'); \
+print('Embedding model ready'); \
+" || echo "WARNING: Embedding model download failed - will retry at runtime"
 
-# ── Pre-download Whisper model into the image ─────────────────
-# Stored at /root/.cache/whisper (baked in, not a volume)
-# Zero download time on container startup.
-RUN python -c "\
+# ── Pre-bake Whisper model into the image ─────────────────────
+RUN python3 -c "\
 import whisper; \
-print(f'📥 Downloading Whisper model: ${WHISPER_MODEL_SIZE}'); \
-model = whisper.load_model('${WHISPER_MODEL_SIZE}'); \
-print('✅ Whisper model downloaded successfully'); \
-" || (echo "⚠️  Whisper download failed — will retry at runtime" && true)
+print('Downloading Whisper model: ${WHISPER_MODEL_SIZE}'); \
+whisper.load_model('${WHISPER_MODEL_SIZE}'); \
+print('Whisper model ready'); \
+" || echo "WARNING: Whisper model download failed - will retry at runtime"
 
 # ── Runtime directories ───────────────────────────────────────
 RUN mkdir -p logs uploads
 
-# ── Environment defaults (all overridable via .env) ──────────
-ENV OLLAMA_HOST=http://ollama:11434 \
-    OLLAMA_MODEL=qwen2.5:72b \
-    OLLAMA_TIMEOUT=300 \
-    WEAVIATE_HOST=weaviate \
-    EMBEDDING_MODEL=paraphrase-multilingual-mpnet-base-v2 \
-    WHISPER_MODEL_SIZE=base \
-    # Tell HuggingFace to use the pre-baked cache
-    HF_HOME=/root/.cache/huggingface \
-    TRANSFORMERS_CACHE=/root/.cache/huggingface \
-    # Tell Whisper to use the pre-baked cache
-    XDG_CACHE_HOME=/root/.cache \
-    # CUDA visibility
-    NVIDIA_VISIBLE_DEVICES=all \
-    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
-    PYTHONUNBUFFERED=1
+# ── Environment defaults ──────────────────────────────────────
+# One ENV per line — no inline comments (Docker syntax requirement)
+ENV OLLAMA_HOST=http://ollama:11434
+ENV OLLAMA_MODEL=qwen2.5:72b
+ENV OLLAMA_TIMEOUT=300
+ENV WEAVIATE_HOST=weaviate
+ENV EMBEDDING_MODEL=paraphrase-multilingual-mpnet-base-v2
+ENV WHISPER_MODEL_SIZE=base
+ENV HF_HOME=/root/.cache/huggingface
+ENV TRANSFORMERS_CACHE=/root/.cache/huggingface
+ENV XDG_CACHE_HOME=/root/.cache
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=15s --start-period=90s --retries=5 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["python", "-m", "uvicorn", "main_offline:app", \
+CMD ["python3", "-m", "uvicorn", "main_offline:app", \
      "--host", "0.0.0.0", "--port", "8000", \
      "--workers", "1", "--log-level", "info"]
