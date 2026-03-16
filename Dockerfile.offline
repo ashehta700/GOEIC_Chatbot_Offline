@@ -1,13 +1,14 @@
 # ═══════════════════════════════════════════════════════════════
 # GOEIC Enterprise Assistant — App Image
 #
-# ✅ CUDA-enabled: embedding model + Whisper run on GPU
-# ✅ Embedding model pre-baked into image (no download on startup)
-# ✅ Whisper model pre-baked into image (no download on startup)
-# ✅ FFmpeg included for Whisper audio processing
+# ✅ CUDA 12.8 — required for RTX 5090 (Blackwell architecture)
+# ✅ Embedding model pre-baked into image
+# ✅ Whisper model pre-baked into image
+# ✅ FFmpeg for audio processing
 # ═══════════════════════════════════════════════════════════════
 
-FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+# RTX 5090 (Blackwell sm_120) requires CUDA 12.8+
+FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04
 
 ARG EMBEDDING_MODEL=paraphrase-multilingual-mpnet-base-v2
 ARG WHISPER_MODEL_SIZE=base
@@ -32,19 +33,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# ── Step 1: pip + numpy FIRST ────────────────────────────────
-# numpy must be installed before torch — torch links against it at import time
+# ── Step 1: pip + numpy FIRST ─────────────────────────────────
+# numpy must exist before torch imports it at link time
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir "numpy>=1.24.0,<2.0.0"
 
-# ── Step 2: PyTorch with CUDA 12.1 ───────────────────────────
+# ── Step 2: PyTorch with CUDA 12.8 ───────────────────────────
+# cu128 wheels support RTX 5090 (Blackwell sm_120)
 RUN pip install --no-cache-dir \
-        torch==2.2.2 \
-        torchaudio==2.2.2 \
-        --index-url https://download.pytorch.org/whl/cu121
+        torch==2.7.0 \
+        torchaudio==2.7.0 \
+        --index-url https://download.pytorch.org/whl/cu128
 
-# ── Step 3: Verify numpy+torch work together before continuing ──
-RUN python3 -c "import numpy; import torch; print('numpy', numpy.__version__); print('torch', torch.__version__); import torch.nn"
+# ── Step 3: Verify numpy + torch work before continuing ───────
+RUN python3 -c "import numpy; import torch; import torch.nn; \
+    print('numpy:', numpy.__version__); \
+    print('torch:', torch.__version__); \
+    print('CUDA available at build time (CPU build server is OK):', torch.cuda.is_available())"
 
 # ── Step 4: App requirements ──────────────────────────────────
 COPY requirements.txt .
@@ -60,27 +65,31 @@ RUN pip install --no-cache-dir \
 COPY main_offline.py .
 COPY smart_scraper_offline.py .
 COPY smart_excel_uploader_offline.py .
-COPY smart_cleaner.py .
+COPY smart_cleanup.py .
 COPY public/ ./public/
 
 # ── Pre-bake embedding model ──────────────────────────────────
+# CUDA not available on GitHub runner (CPU build server) — that is OK.
+# The model weights are saved to /root/.cache/huggingface inside the image.
+# At runtime on the RTX 5090 server, torch.cuda.is_available() = True
+# and sentence-transformers will automatically use the GPU.
 RUN python3 -c "\
 import os; \
 os.environ['TRANSFORMERS_OFFLINE'] = '0'; \
 from sentence_transformers import SentenceTransformer; \
 print('Downloading embedding model: ${EMBEDDING_MODEL}'); \
 SentenceTransformer('${EMBEDDING_MODEL}'); \
-print('Embedding model ready'); \
+print('Embedding model baked in successfully'); \
 "
 
 # ── Pre-bake Whisper model ────────────────────────────────────
-# numpy is now installed first so torch.from_numpy works correctly
+# Same logic: weights saved in image, GPU used at runtime only.
 RUN python3 -c "\
 import numpy; \
 import whisper; \
 print('Downloading Whisper model: ${WHISPER_MODEL_SIZE}'); \
 whisper.load_model('${WHISPER_MODEL_SIZE}'); \
-print('Whisper model ready'); \
+print('Whisper model baked in successfully'); \
 "
 
 # ── Runtime directories ───────────────────────────────────────
