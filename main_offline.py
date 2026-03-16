@@ -285,7 +285,33 @@ class AsyncJobsCache:
                 'expires': datetime.now() + timedelta(minutes=self._ttl)
             }
 
-jobs_cache = AsyncJobsCache(ttl_minutes=60)
+jobs_cache = AsyncJobsCache(ttl_minutes=30)  # 30min matches production version
+
+# ── Response cache (short-lived, for identical repeated queries) ──
+class ResponseCache:
+    """Cache identical queries for 30min to avoid redundant Ollama calls."""
+    def __init__(self, expiry_minutes=30):
+        self._cache = {}
+        self._expiry = expiry_minutes
+        self._lock = asyncio.Lock()
+
+    async def get(self, key: str):
+        async with self._lock:
+            if key in self._cache:
+                item = self._cache[key]
+                if datetime.now() < item['expires']:
+                    return item['data']
+                del self._cache[key]
+        return None
+
+    async def set(self, key: str, data):
+        async with self._lock:
+            self._cache[key] = {
+                'data': data,
+                'expires': datetime.now() + timedelta(minutes=self._expiry)
+            }
+
+response_cache = ResponseCache(expiry_minutes=30)
 
 async def extract_job_details_async(session: aiohttp.ClientSession, job_url: str, headers: dict) -> dict:
     if not job_url or job_url.strip() == '':
@@ -362,8 +388,10 @@ async def fetch_live_jobs_async(lang: str) -> str:
     url = url_map.get(lang, url_map["ar"])
 
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept-Language': f'{lang},en;q=0.9',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Referer': 'https://www.goeic.gov.eg/'
     }
 
     try:
@@ -377,11 +405,21 @@ async def fetch_live_jobs_async(lang: str) -> str:
                 job_table = soup.find('table', id='myTableJob')
 
                 if not job_table:
-                    return "No jobs found at the moment."
+                    # Check if page explicitly says no jobs
+                    page_text = soup.get_text().lower()
+                    no_jobs_indicators = [
+                        "لا توجد وظائف", "no vacancies", "no jobs available",
+                        "pas de postes", "currently no openings", "لا يوجد"
+                    ]
+                    if any(ind in page_text for ind in no_jobs_indicators):
+                        no_msg = {"ar": "لا توجد وظائف متاحة حالياً في الهيئة.", "en": "There are currently no job vacancies available.", "fr": "Il n'y a actuellement aucun poste vacant disponible."}.get(lang, "لا توجد وظائف متاحة حالياً.")
+                        await jobs_cache.set(lang, no_msg)
+                        return no_msg
+                    return f"لم يتم العثور على وظائف معلنة حالياً. للتأكد يرجى زيارة:\n🔗 {url}"
 
                 tbody = job_table.find('tbody')
                 if not tbody:
-                    return "No jobs found at the moment."
+                    return f"لا توجد وظائف متاحة حالياً. يرجى زيارة:\n🔗 {url}"
 
                 rows = tbody.find_all('tr')
 
@@ -451,20 +489,44 @@ async def fetch_live_jobs_async(lang: str) -> str:
                     jobs_list.append(job_entry)
 
                 if not jobs_list:
-                    return "لا توجد وظائف متاحة حالياً."
+                    no_msg = f"لا توجد وظائف متاحة حالياً. يرجى زيارة:\n🔗 {url}"
+                    await jobs_cache.set(lang, no_msg)
+                    return no_msg
+
+                header = {
+                    "ar": "🔴 الوظائف المتاحة الآن في الهيئة العامة للرقابة على الصادرات والواردات",
+                    "en": "🔴 CURRENT JOB VACANCIES - General Organization for Export & Import Control",
+                    "fr": "🔴 POSTES VACANTS ACTUELS - Organisation Générale de Contrôle des Exportations"
+                }.get(lang, "🔴 الوظائف المتاحة الآن")
+
+                intro = {
+                    "ar": "التزاماً بمبدأ الشفافية والمساواة وتكافؤ الفرص، تعلن الهيئة عن الوظائف التالية:",
+                    "en": "In commitment to transparency and equal opportunities, GOEIC announces the following vacancies:",
+                    "fr": "Dans un engagement de transparence et d'égalité des chances, GOEIC annonce les postes suivants:"
+                }.get(lang, "الوظائف المتاحة:")
 
                 final_output = f"""
 {'═' * 70}
-🔴 الوظائف المتاحة في الهيئة العامة للرقابة على الصادرات والواردات
+{header}
 {'═' * 70}
-📅 تحديث: {datetime.now().strftime('%Y-%m-%d %H:%M')}
-📊 العدد: {len(jobs_list)} وظيفة
+
+📅 آخر تحديث: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+🌐 المصدر: {url}
+
+{intro}
 
 {''.join(jobs_list)}
+
+{'═' * 70}
+📢 ملاحظات هامة:
+• للتقديم: يرجى زيارة رابط كل وظيفة أعلاه
+• للاستفسار: راجع صفحة اسأل ونحن نجيب على موقع الهيئة
+• المصدر الرسمي: {url}
 {'═' * 70}
 """
 
                 await jobs_cache.set(lang, final_output)
+                logger.info(f"✅ Scraped and formatted {len(jobs_list)} jobs for {lang}")
                 return final_output
 
     except Exception as e:
@@ -660,14 +722,25 @@ def smart_rerank(results: List[Dict], intent: str, query: str) -> List[Dict]:
 # YOUR EXACT PROFESSIONAL PROMPT (PRESERVED)
 # ═══════════════════════════════════════════════════════════════
 def build_professional_prompt(docs: List[Dict], lang: str, intent: str, query: str) -> str:
-    """YOUR EXACT PROFESSIONAL PROMPT - UNCHANGED"""
+    """PROFESSIONAL PROMPT — context capped for speed (4 docs x 1500 chars)."""
+    # ── Context budget ────────────────────────────────────────
+    # Top 4 docs only (was 8). Each doc capped at 1500 chars (was 5000).
+    # Total context: ~6000 chars vs old ~40000 chars → 3-5x faster Ollama.
+    MAX_DOCS = 4
+    MAX_CHARS_PER_DOC = 1500
+    MAX_TOTAL_CONTEXT = 8000   # hard ceiling
+
     context = ""
-    for i, doc in enumerate(docs[:8], 1):
+    total_chars = 0
+    for i, doc in enumerate(docs[:MAX_DOCS], 1):
         title = doc.get('title', 'Untitled').replace(" - GOEIC", "").strip()
         url = doc.get('url', '')
-        content = doc.get('content', '')[:5000]
-
-        context += f"""
+        content = doc.get('content', '')[:MAX_CHARS_PER_DOC]
+        remaining = MAX_TOTAL_CONTEXT - total_chars
+        if remaining <= 0:
+            break
+        content = content[:remaining]
+        block = f"""
 ════════════════════════════════════════════════════════════════
 📄 SOURCE {i}: {title}
 🔗 URL: {url}
@@ -675,6 +748,10 @@ def build_professional_prompt(docs: List[Dict], lang: str, intent: str, query: s
 {content}
 ════════════════════════════════════════════════════════════════
 """
+        context += block
+        total_chars += len(block)
+
+    logger.info(f"📏 Context: {total_chars} chars, {min(len(docs), MAX_DOCS)} docs")
 
     lang_instruction = {
         "ar": "You MUST respond in Arabic (العربية) only. Use professional, formal Arabic.",
@@ -999,8 +1076,8 @@ async def generate_answer_ollama(system_prompt: str, user_prompt: str, history: 
 
     history_text = ""
     if history:
-        recent = history[-2:]
-        history_text = "📜 HISTORY:\n" + "\n".join([
+        recent = history[-4:]  # Last 4 messages — matches production version
+        history_text = "📜 CONVERSATION HISTORY:\n" + "\n".join([
             f"{m.role.upper()}: {m.content}" for m in recent
         ]) + "\n\n"
 
@@ -1028,10 +1105,10 @@ Format:
             "stream": False,
             "options": {
                 "temperature": 0.1,
-                "num_predict": 2048,
-                "num_ctx": 8192,
-                "num_gpu": -1,
-                "num_thread": 6,
+                "num_predict": 1024,   # was 2048 — answers rarely need more
+                "num_ctx": 4096,       # was 8192 — context is now ~1500 tokens max
+                "num_gpu": -1,         # use all GPU layers
+                "num_thread": 4,
                 "repeat_penalty": 1.1,
                 "top_p": 0.9,
                 "top_k": 40,
@@ -1096,6 +1173,16 @@ async def process_user_query(
         translate it with Ollama, return immediately (no vector search).
       - Otherwise → normal RAG flow.
     """
+
+    # ── RESPONSE CACHE CHECK ─────────────────────────────────
+    # Skip cache for jobs (live data) — always fresh
+    cache_key = f"{language}:{question.strip().lower()}"
+    intent_check = detect_intent(question)
+    if intent_check != "jobs":
+        cached_resp = await response_cache.get(cache_key)
+        if cached_resp:
+            logger.info(f"⚡ Response cache hit for query")
+            return cached_resp
 
     # ── TRANSLATION INTERCEPT ─────────────────────────────────
     target_lang = detect_translation_request(question)
@@ -1169,7 +1256,7 @@ async def process_user_query(
                 res = collection.query.hybrid(
                     query=question,
                     vector=vector,
-                    limit=20,
+                    limit=10,          # was 20 — top 10 chunks is enough
                     alpha=0.5,
                     filters=filters,
                     return_metadata=MetadataQuery(score=True)
@@ -1184,14 +1271,14 @@ async def process_user_query(
                     if pid not in parent_scores or score > parent_scores[pid]['score']:
                         parent_scores[pid] = {'score': score, 'obj': obj}
 
-                top_pids = list(parent_scores.keys())[:12]
+                top_pids = list(parent_scores.keys())[:6]  # was 12 — we only use top 4 in prompt
                 if top_pids:
                     fetch_res = collection.query.fetch_objects(
                         filters=(
                             Filter.by_property("parent_id").contains_any(top_pids) &
                             Filter.by_property("chunk_type").equal("parent")
                         ),
-                        limit=12
+                        limit=6        # was 12
                     )
 
                     for obj in fetch_res.objects:
@@ -1265,7 +1352,11 @@ async def process_user_query(
         })
         seen_urls.add(url)
 
-    return answer, final_sources, suggestions, False
+    result = (answer, final_sources, suggestions, False)
+    # Cache result for non-job queries
+    if intent != "jobs":
+        await response_cache.set(cache_key, result)
+    return result
 
 # ═══════════════════════════════════════════════════════════════
 # AUTHENTICATION
@@ -1493,22 +1584,115 @@ async def voice_endpoint(request: Request, file: UploadFile = File(...), languag
             except:
                 pass
 
-@app.get("/health")
-async def health_check():
-    gpu_info = "N/A"
-    if torch.cuda.is_available():
-        gpu_info = f"{torch.cuda.get_device_name(0)} ({torch.cuda.get_device_properties(0).total_memory // 1024**3}GB)"
+@app.get("/api/test-jobs/{language}")
+async def test_jobs_scraping(language: str):
+    """
+    Test live job scraping — forces a fresh fetch bypassing cache.
+    Usage: GET /api/test-jobs/ar  or  /api/test-jobs/en  or  /api/test-jobs/fr
+    """
+    if language not in ["ar", "en", "fr"]:
+        raise HTTPException(status_code=400, detail="Language must be ar, en, or fr")
+
+    logger.info(f"🧪 Testing job scraping for language: {language}")
+
+    # Force fresh fetch by clearing cache entry
+    async with jobs_cache._lock:
+        if language in jobs_cache._cache:
+            del jobs_cache._cache[language]
+
+    jobs_data = await fetch_live_jobs_async(language)
 
     return {
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "mode": "FULLY OFFLINE",
-        "llm": f"Ollama ({OLLAMA_MODEL})",
-        "embeddings": f"Local ({EMBEDDING_MODEL})",
-        "gpu": gpu_info,
-        "whisper": "Available" if WHISPER_AVAILABLE else "Not installed",
-        "weaviate": client is not None,
-        "ollama_ready": ollama_client is not None
+        "language": language,
+        "scraped_at": datetime.now().isoformat(),
+        "data_length": len(jobs_data),
+        "jobs_data": jobs_data,
+        "source_url": f"https://www.goeic.gov.eg/{language}/media-center/jobs"
+    }
+
+
+@app.get("/health")
+async def health_check():
+    # ── GPU info ──────────────────────────────────────────────
+    gpu_available = torch.cuda.is_available()
+    if gpu_available:
+        gpu_name     = torch.cuda.get_device_name(0)
+        gpu_vram_gb  = round(torch.cuda.get_device_properties(0).total_memory / 1024**3, 1)
+        gpu_used_gb  = round(torch.cuda.memory_allocated(0) / 1024**3, 2)
+        gpu_info     = f"{gpu_name} ({gpu_vram_gb}GB total, {gpu_used_gb}GB used)"
+    else:
+        gpu_info = "No GPU detected (running on CPU)"
+
+    # ── Ollama live check: which model is actually loaded ─────
+    ollama_loaded_model = None
+    ollama_available_models = []
+    try:
+        if ollama_client:
+            resp = await ollama_client.get("/api/tags", timeout=5.0)
+            if resp.status_code == 200:
+                models = resp.json().get("models", [])
+                ollama_available_models = [m.get("name") for m in models]
+    except Exception:
+        pass
+
+    # ── Weaviate doc count ────────────────────────────────────
+    weaviate_docs = 0
+    try:
+        if collection:
+            weaviate_docs = collection.aggregate.over_all(
+                filters=Filter.by_property("chunk_type").equal("parent")
+            ).total_count
+    except Exception:
+        pass
+
+    return {
+        # ── Overall status ───────────────────────────────────
+        "status":           "healthy",
+        "timestamp":        datetime.now().isoformat(),
+        "mode":             "FULLY OFFLINE",
+
+        # ── LLM configuration (from .env) ────────────────────
+        "llm": {
+            "host":              OLLAMA_HOST,
+            "model_from_env":    OLLAMA_MODEL,
+            "available_models":  ollama_available_models,
+            "env_model_loaded":  OLLAMA_MODEL in ollama_available_models,
+            "timeout_seconds":   OLLAMA_TIMEOUT,
+            "client_ready":      ollama_client is not None,
+        },
+
+        # ── Embeddings ───────────────────────────────────────
+        "embeddings": {
+            "model":    EMBEDDING_MODEL,
+            "device":   "GPU" if gpu_available else "CPU",
+            "ready":    local_embedder is not None,
+        },
+
+        # ── Voice / Whisper ──────────────────────────────────
+        "whisper": {
+            "available":    WHISPER_AVAILABLE,
+            "model_size":   os.getenv("WHISPER_MODEL_SIZE", "base"),
+            "loaded":       whisper_model is not None,
+        },
+
+        # ── GPU ──────────────────────────────────────────────
+        "gpu": {
+            "available": gpu_available,
+            "info":      gpu_info,
+        },
+
+        # ── Weaviate ─────────────────────────────────────────
+        "weaviate": {
+            "host":       weaviate_host,
+            "connected":  client is not None,
+            "documents":  weaviate_docs,
+        },
+
+        # ── Cache ────────────────────────────────────────────
+        "cache": {
+            "response_cache_entries": len(response_cache._cache),
+            "jobs_cache_entries":     len(jobs_cache._cache),
+        },
     }
 
 # ═══════════════════════════════════════════════════════════════
@@ -1617,13 +1801,28 @@ async def run_smart_scraper():
                     index_to_weaviate,
                 )
 
-                client = _weaviate.connect_to_local(
-                    additional_config=AdditionalConfig(
-                        timeout=Timeout(init=60, query=180, insert=180)
+                # ── Read WEAVIATE_HOST from env (set by docker-compose) ──
+                # Inside Docker: WEAVIATE_HOST=weaviate (service name)
+                # Local dev:     WEAVIATE_HOST=localhost
+                _weaviate_host = os.getenv("WEAVIATE_HOST", "localhost")
+                logger.info(f"🔌 Scraper connecting to Weaviate at: {_weaviate_host}")
+
+                if _weaviate_host == "localhost":
+                    client = _weaviate.connect_to_local(
+                        additional_config=AdditionalConfig(
+                            timeout=Timeout(init=60, query=180, insert=180)
+                        )
                     )
-                )
+                else:
+                    client = _weaviate.connect_to_custom(
+                        http_host=_weaviate_host, http_port=8080, http_secure=False,
+                        grpc_host=_weaviate_host, grpc_port=50051, grpc_secure=False,
+                        additional_config=AdditionalConfig(
+                            timeout=Timeout(init=60, query=180, insert=180)
+                        )
+                    )
                 collection = client.collections.get("GOEIC_Knowledge_Base_V2")
-                logger.info("✅ Weaviate connected for scraping task")
+                logger.info(f"✅ Weaviate connected for scraping task ({_weaviate_host})")
 
                 scraping_status.update({
                     "message": "🧹 Step 1/4 — Pre-scrape cleanup (removing any existing duplicates)...",
@@ -1822,12 +2021,26 @@ async def run_smart_uploader(excel_path: str, base_dir: str):
                 upload_status["message"] = f"Processing {len(df)} rows..."
                 upload_status["progress"] = 30
 
-                client = weaviate.connect_to_local(
-                    additional_config=AdditionalConfig(
-                        timeout=Timeout(init=60, query=180, insert=180)
+                # ── Read WEAVIATE_HOST from env (set by docker-compose) ──
+                _weaviate_host = os.getenv("WEAVIATE_HOST", "localhost")
+                logger.info(f"🔌 Uploader connecting to Weaviate at: {_weaviate_host}")
+
+                if _weaviate_host == "localhost":
+                    client = weaviate.connect_to_local(
+                        additional_config=AdditionalConfig(
+                            timeout=Timeout(init=60, query=180, insert=180)
+                        )
                     )
-                )
+                else:
+                    client = weaviate.connect_to_custom(
+                        http_host=_weaviate_host, http_port=8080, http_secure=False,
+                        grpc_host=_weaviate_host, grpc_port=50051, grpc_secure=False,
+                        additional_config=AdditionalConfig(
+                            timeout=Timeout(init=60, query=180, insert=180)
+                        )
+                    )
                 collection = client.collections.get("GOEIC_Knowledge_Base_V2")
+                logger.info(f"✅ Weaviate connected for upload ({_weaviate_host})")
 
                 dup_detector = DocumentDuplicateDetector(client, "GOEIC_Knowledge_Base_V2")
 
